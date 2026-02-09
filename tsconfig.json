@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    // ... rest of your TypeScript config
+    "plugins": [
+      {
+        "name": "workflow"
+      }
+    ]
+  }
+}
