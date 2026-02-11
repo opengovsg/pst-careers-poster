@@ -140,3 +140,5 @@ vite.config.ts.timestamp-*
 
 # Vercel workflows
 .workflow-data/
+.output/
+data/

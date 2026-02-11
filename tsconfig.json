@@ -2,6 +2,8 @@
   "compilerOptions": {
     "moduleResolution": "bundler",
     "module": "ESNext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     // ... rest of your TypeScript config
     "plugins": [
       {
