@@ -28,7 +28,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
         job.agency,
         job.remainingDays,
         job.experienceYearsMin,
-        job.experienceYearsMax
+        job.experienceYearsMax,
       ]
       .join(',')
     )
@@ -54,6 +54,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
   })
 
   const jobCsv = [
+    'postingNo,jobId,jobTitle,agency,agencyDescription,closingDateText,remainingDays,experienceYearsMin,experienceYearsMax,url,jobDescription,jobRequirements',
     [...Object.keys(jobs[0]),'url'].join(','),
     jobs
       .filter(job => 
@@ -63,8 +64,25 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
             postingNo === job.postingNo
         )
       )
-      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.jobId}/${job.postingNo}`}))
-      .map(job => Object.values(job).map(value => `"${`${value}`.replace(/"/g, '""')}"`).join(','))
+      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.jobId}/${job.postingNo}`} as Record<string, string>))
+      .map(
+        job => [
+          job.postingNo,
+          job.jobId,
+          job.jobTitle,
+          job.agency,
+          job.agencyDescription,
+          job.closingDateText,
+          job.remainingDays,
+          job.experienceYearsMin,
+          job.experienceYearsMax,
+          job.url,
+          job.jobDescription,
+          job.jobRequirements,
+        ]
+        .map(value => `"${`${value}`.replace(/"/g, '""')}"`)
+        .join(',')
+      )
   ].join('\n')
   
 
