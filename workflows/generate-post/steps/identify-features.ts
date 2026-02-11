@@ -4,7 +4,7 @@ import { model } from '../../shared'
 
 const JOB_PORTAL_URL_PREFIX = 'https://jobs.careers.gov.sg/jobs/hrp'
 
-export async function identifyFeatures(jobs: Record<string, string>[]) {
+export async function identifyFeatures(jobs: Record<string, string>[], featureType: 'job title' | 'agency') {
   'use step'
 
   if (jobs.length === 0) {
@@ -19,31 +19,36 @@ export async function identifyFeatures(jobs: Record<string, string>[]) {
   // send those to the model to identify trends and specific roles to highlight
   const jobMetadata = [
     'jobId,postingNo,jobTitle,agency,remainingDays,experienceYearsMin,experienceYearsMax',
-    ...jobs.map(job => [
-      job.jobId,
-      job.postingNo,
-      job.jobTitle,
-      job.agency,
-      job.remainingDays,
-      job.experienceYearsMin,
-      job.experienceYearsMax
-    ].join(','))
+    ...jobs
+      .filter(job => ['InfoComm, Technology, New Media Communications'].includes(job.industry))
+      .map(job => [
+        job.jobId,
+        job.postingNo,
+        job.jobTitle,
+        job.agency,
+        job.remainingDays,
+        job.experienceYearsMin,
+        job.experienceYearsMax
+      ]
+      .join(',')
+    )
   ].join('\n')
 
   const { output } = await generateText({
     model,
-    system: 'You work for the Singapore Public Service, focusing on trends tech hiring. You are methodical and detail-oriented, and do not make assumptions beyond the data that is presented to you.',
-    prompt: `Identify the singlemost significant trend in the following job metadata.
-    This could either be a specific role that is in high demand, or an agency that is hiring heavily.
+    system: 
+      'You work for the Singapore Public Service, focusing on trends in hiring for information technology roles. ' +
+      'You are methodical and detail-oriented, and do not make assumptions beyond the data that is presented to you.',
+    prompt: `Identify the singlemost significant ${featureType} in the following job metadata.
     The CSV of job metadata to be featured is found below:\n${jobMetadata}\n
     `,
     output: Output.object({
       schema: z.object({
-        trend: z.string().describe('The identified trend, either a role or agency'),
+        feature: z.string().describe(`The identified ${featureType}`),
         jobs: z.array(z.object({ 
           jobId: z.string().describe('The job ID of the role'), 
           postingNo: z.string().describe('The posting number of the role')
-        })).describe('A list of jobs that fit the identified trend'),
+        })).describe(`A list of jobs that fit the identified ${featureType}`),
       })
     })
   })
@@ -64,7 +69,7 @@ export async function identifyFeatures(jobs: Record<string, string>[]) {
   
 
   return {
-    trend: output.trend,
+    feature: output.feature,
     jobCsv,
   }
 }
