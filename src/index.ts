@@ -1,3 +1,5 @@
+import './instrumentation.ts'
+
 import express from 'express'
 import { start } from 'workflow/api'
 import { generatePost } from '../workflows/generate-post'
