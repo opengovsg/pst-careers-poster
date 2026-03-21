@@ -13,4 +13,4 @@ export const provider = addInstrumentation(createOpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 }))
 
-export const model = provider('claude-sonnet-4-5-20250929-v1:rsn')
+export const model = provider(process.env.OPENAI_MODEL_NAME!)
