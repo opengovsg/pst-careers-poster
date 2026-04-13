@@ -27,5 +27,5 @@ export async function generateContent(feature: string, jobs: string): Promise<st
     - At the end of the post, include a short sentence so that readers who did not find suitable roles can still browse for other roles at jobs.careers.gov.sg. YOU MUST STILL HAVE JOB LISTING URLS FOR EACH FEATURED JOB.`,
   })
 
-  return result.text
+  return result.text.replace(/\(/g, '\\(').replace(/\)/g, '\\)')
 }

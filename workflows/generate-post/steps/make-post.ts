@@ -1,30 +1,26 @@
 
 /**
  * Post the social media content
- * @param content the post content
+ * @param value the post content
  */
-export async function makePost(commentary: string) {
+export async function makePost(value: string) {
   'use step'
-  const response = await fetch(`${process.env.LINKEDIN_API_URL}/rest/posts`, {
+  const response = await fetch(`https://api.fillout.com/v1/api/forms/${process.env.FILLOUT_FORM_ID}/submissions`, {
     method: 'POST',
-    body: JSON.stringify({
-      author: process.env.LINKEDIN_AUTHOR_URN,
-      commentary,
-      visibility: 'PUBLIC',
-      distribution: {
-        feedDistribution: Boolean(process.env.DRY_RUN) ? 'NONE' : 'MAIN_FEED',
-        targetEntities: [],
-        thirdPartyDistributionChannels: []
-      },
-      lifecycleState: 'PUBLISHED',
-      isReshareDisabledByAuthor: false
-    }),
-    headers: { 
+    headers: {
+      'Authorization': `Bearer ${process.env.FILLOUT_API_KEY}`,
       'Content-Type': 'application/json',
-      'Linkedin-Version': '202601',
-      'X-Restli-Protocol-Version': '2.0.0',
-      'Authorization': `Bearer ${process.env.LINKEDIN_ACCESS_TOKEN}`,
     },
+    body: JSON.stringify({
+      submissions: [
+        {
+          questions: [{ id: process.env.FILLOUT_CONTENT_ID, value }],
+          urlParameters: [],
+          scheduling: [],
+          payments: [],
+        }
+      ],
+    }),
   })
   return response.json()
 }
