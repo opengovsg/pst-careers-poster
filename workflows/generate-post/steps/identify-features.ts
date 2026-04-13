@@ -113,7 +113,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
             postingNo === job.postingNo
         )
       )
-      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.jobId}/${job.postingNo}`} as Record<string, string>))
+      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.jobId}/${job.postingNo}?utm_source=pst-careers&utm_medium=linkedin&utm_campaign=post`} as Record<string, string>))
       .map(
         job => [
           job.postingNo,
