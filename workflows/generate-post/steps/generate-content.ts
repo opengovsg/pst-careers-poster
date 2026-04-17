@@ -24,7 +24,7 @@ export async function generateContent(feature: string, jobs: string): Promise<st
     - Use British English, and ensure date formats follow the day month year format (e.g., 25 December 2023).
     - Highlight how the roles make a positive impact in the community.
     - Keep the tone upbeat and approachable.
-    - At the end of the post, include a short sentence so that readers who did not find suitable roles can still browse for other roles at jobs.careers.gov.sg. YOU MUST STILL HAVE JOB LISTING URLS FOR EACH FEATURED JOB.`,
+    - At the end of the post, include a short sentence so that readers who did not find suitable roles can still browse for other roles at go.gov.sg/pst-roles. YOU MUST STILL HAVE JOB LISTING URLS FOR EACH FEATURED JOB.`,
   })
 
   return result.text.replace(/\(/g, '\\(').replace(/\)/g, '\\)')
