@@ -5,7 +5,7 @@ import { start } from 'workflow/api'
 import { generatePost } from '../workflows/generate-post'
 const app = express()
 app.use(express.json())
-app.post('/api/generate', async (req, res) => {
+app.get('/api/generate', async (req, res) => {
   
   const authToken = req.headers.authorization
   if (authToken !== `Bearer ${process.env.CRON_SECRET}`) {
