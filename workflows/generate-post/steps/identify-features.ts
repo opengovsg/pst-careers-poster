@@ -30,7 +30,7 @@ class SimpleCloudflareKV {
         Authorization: `Bearer ${this.token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify([{ key, value: Date.now().toString(), expiration_ttl: 30 * 24 * 60 * 60 }]), // expire in 30 days
+      body: JSON.stringify([{ key, value: Date.now().toString(), expiration_ttl: 45 * 24 * 60 * 60 }]), // expire in 45 days
     })
     if (!response.ok) {
       throw new Error(`Failed to add key: ${response.statusText}`)
