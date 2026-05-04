@@ -46,30 +46,10 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
 
   if (jobs.length === 0) {
     return {
-      trend: 'No jobs available',
+      feature: 'No jobs available',
       jobCsv: '',
     }
   }
-
-  // Grab jobId, postingNo, jobTitle, agency, remainingDays,
-  // experienceYearsMin, experienceYearsMax
-  // send those to the model to identify trends and specific roles to highlight
-  const jobMetadata = [
-    'jobId,postingNo,jobTitle,agency,remainingDays,experienceYearsMin,experienceYearsMax',
-    ...jobs
-      .filter(job => ['InfoComm, Technology, New Media Communications'].includes(job.industry))
-      .map(job => [
-        job.jobId,
-        job.postingNo,
-        job.jobTitle,
-        job.agency,
-        job.remainingDays,
-        job.experienceYearsMin,
-        job.experienceYearsMax,
-      ]
-      .join(',')
-    )
-  ].join('\n')
 
   const kv = new SimpleCloudflareKV({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
@@ -80,27 +60,18 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
 
   const pastEntries = await kv.listKeys(namespace)
 
-  const { output } = await generateText({
-    model,
-    system: 
-      'You work for the Singapore Public Service, focusing on trends in hiring for information technology roles. ' +
-      'You are methodical and detail-oriented, and do not make assumptions beyond the data that is presented to you.',
-    prompt: `Identify the singlemost significant ${featureType} in the following job metadata.\n
-    ${pastEntries.length === 0 ? '' : `Absolutely avoid the following past ${featureType}s: ${pastEntries.join(', ')}\n`}
-    The CSV of job metadata to be featured is found below:\n${jobMetadata}\n
-    `,
-    output: Output.object({
-      schema: z.object({
-        feature: z.string().describe(`The identified ${featureType}`),
-        jobs: z.array(z.object({ 
-          jobId: z.string().describe('The job ID of the role'), 
-          postingNo: z.string().describe('The posting number of the role')
-        })).describe(`A list of jobs that fit the identified ${featureType}`),
-      })
-    })
-  })
+  const { output } = await findFeature(featureType, pastEntries, jobs)
 
-  await kv.addKey(namespace, output.feature)
+  console.log(output)
+
+  if (!output.feature) {
+    return {
+      feature: 'No jobs available',
+      jobCsv: '',
+    }
+  }
+
+  // await kv.addKey(namespace, output.feature)
 
   const jobCsv = [
     'postingNo,jobId,jobTitle,agency,agencyDescription,closingDateText,remainingDays,experienceYearsMin,experienceYearsMax,url,jobDescription,jobRequirements',
@@ -138,5 +109,76 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
   return {
     feature: output.feature,
     jobCsv,
+  }
+}
+
+async function findFeature(featureType: 'job title' | 'agency', pastEntries: string[], jobs: Record<string, string>[]) {
+  switch (featureType) {
+    case 'agency':
+      // Find the statistical mode of the agency not found in `pastEntries`
+      // Group by agency, count the number of jobs for each agency, and return the agency with the highest count that is not in `pastEntries`
+      const jobsByAgency = jobs
+        .filter(job => ['InfoComm, Technology, New Media Communications'].includes(job.industry))
+        .reduce((acc, job) => {
+          if (!pastEntries.includes(job.agency)) {
+            if (!acc[job.agency]) {
+              acc[job.agency] = []
+            }
+            acc[job.agency].push({ jobId: job.jobId, postingNo: job.postingNo })
+          }
+          return acc
+        }, {} as Record<string, { jobId: string, postingNo: string }[]>)
+
+      const sortedAgencies = Object.entries(jobsByAgency).sort((a, b) => b[1].length - a[1].length)
+      const mostCommonAgency = sortedAgencies[0]
+      if (!mostCommonAgency) {
+        return { 
+          output: { feature: undefined, jobs: [] },
+        }
+      }
+      const [feature, jobsForMostCommonAgency] = mostCommonAgency
+      return { 
+        output: { feature, jobs: jobsForMostCommonAgency },
+      }
+
+    case 'job title':
+    default:
+      // Grab jobId, postingNo, jobTitle, agency, remainingDays,
+      // experienceYearsMin, experienceYearsMax
+      // send those to the model to identify trends and specific roles to highlight
+      const jobMetadata = [
+        'jobId,postingNo,jobTitle,agency,remainingDays,experienceYearsMin,experienceYearsMax',
+        ...jobs
+          .filter(job => ['InfoComm, Technology, New Media Communications'].includes(job.industry))
+          .map(job => [
+            job.jobId,
+            job.postingNo,
+            job.jobTitle,
+            job.agency,
+            job.remainingDays,
+            job.experienceYearsMin,
+            job.experienceYearsMax,
+          ]
+          .join(',')
+        )
+      ].join('\n')
+      return await generateText({
+        model,
+        system: 'You work for the Singapore Public Service, focusing on trends in hiring for information technology roles. ' +
+          'You are methodical and detail-oriented, and do not make assumptions beyond the data that is presented to you.',
+        prompt: `Identify the most significant ${featureType} in the following job metadata.\n
+        ${pastEntries.length === 0 ? '' : `Absolutely avoid the following past ${featureType}s: ${pastEntries.join(', ')}\n`}
+        The CSV of job metadata to be featured is found below:\n${jobMetadata}\n
+        `,
+        output: Output.object({
+          schema: z.object({
+            feature: z.string().describe(`The identified ${featureType}`),
+            jobs: z.array(z.object({
+              jobId: z.string().describe('The job ID of the role'),
+              postingNo: z.string().describe('The posting number of the role'),
+            })).describe(`A list of jobs that fit the identified ${featureType}`),
+          })
+        })
+      })
   }
 }
