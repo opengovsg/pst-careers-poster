@@ -2,7 +2,7 @@ import { generateText, Output } from 'ai'
 import { z } from 'zod'
 import { model } from '../../shared'
 
-const JOB_PORTAL_URL_PREFIX = 'https://jobs.careers.gov.sg/jobs/hrp'
+const JOB_PORTAL_URL_PREFIX = 'https://jobs.careers.gov.sg/jobs'
 
 class SimpleCloudflareKV {
   private accountId: string
@@ -71,7 +71,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
     }
   }
 
-  // await kv.addKey(namespace, output.feature)
+  await kv.addKey(namespace, output.feature)
 
   const jobCsv = [
     'postingNo,jobId,jobTitle,agency,agencyDescription,closingDateText,remainingDays,experienceYearsMin,experienceYearsMax,url,jobDescription,jobRequirements',
@@ -84,7 +84,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
             postingNo === job.postingNo
         )
       )
-      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.jobId}/${job.postingNo}?utm_source=pst-careers&utm_medium=linkedin&utm_campaign=post`} as Record<string, string>))
+      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.platform}/${job.postingNo ? `${job.jobId}/${job.postingNo}` : job.jobId}?utm_source=pst-careers&utm_medium=linkedin&utm_campaign=post`} as Record<string, string>))
       .map(
         job => [
           job.postingNo,
