@@ -1,8 +1,29 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
-import { model } from '../../shared'
+import { model } from '../../../shared'
+import { ROLE_TAGS } from './role-tags'
 
 const JOB_PORTAL_URL_PREFIX = 'https://jobs.careers.gov.sg/jobs'
+const IT_INDUSTRY = 'InfoComm, Technology, New Media Communications'
+// A listing qualifies for a role tag if its title matches, OR its requirements
+// field contains at least this many keyword hits. A single hit in requirements
+// is almost always incidental ("basic knowledge of cybersecurity" in a
+// non-cyber role); the threshold rejects those while still catching roles
+// where the tag is genuinely a focus area but the title is generic.
+const REQ_HIT_THRESHOLD = 2
+
+function stripHtml(text: string | undefined): string {
+  return (text ?? '').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ')
+}
+
+function countMatches(text: string, patterns: RegExp[]): number {
+  return patterns.reduce((sum, pattern) => {
+    const global = pattern.flags.includes('g')
+      ? pattern
+      : new RegExp(pattern.source, pattern.flags + 'g')
+    return sum + (text.match(global)?.length ?? 0)
+  }, 0)
+}
 
 class SimpleCloudflareKV {
   private accountId: string
@@ -112,37 +133,73 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
   }
 }
 
-async function findFeature(featureType: 'job title' | 'agency', pastEntries: string[], jobs: Record<string, string>[]) {
+type FeatureOutput = {
+  output: {
+    feature: string | undefined
+    jobs: { jobId: string, postingNo: string }[]
+  }
+}
+
+async function findFeature(featureType: 'job title' | 'agency', pastEntries: string[], jobs: Record<string, string>[]): Promise<FeatureOutput> {
+  const itJobs = jobs.filter(job => job.industry === IT_INDUSTRY)
+
   switch (featureType) {
-    case 'agency':
-      // Find the statistical mode of the agency not found in `pastEntries`
-      // Group by agency, count the number of jobs for each agency, and return the agency with the highest count that is not in `pastEntries`
-      const jobsByAgency = jobs
-        .filter(job => ['InfoComm, Technology, New Media Communications'].includes(job.industry))
-        .reduce((acc, job) => {
-          if (!pastEntries.includes(job.agency)) {
-            if (!acc[job.agency]) {
-              acc[job.agency] = []
-            }
-            acc[job.agency].push({ jobId: job.jobId, postingNo: job.postingNo })
+    case 'agency': {
+      // Statistical mode of the agency, excluding agencies featured in the
+      // past `pastEntries` window (45-day TTL in Cloudflare KV).
+      const jobsByAgency = itJobs.reduce((acc, job) => {
+        if (pastEntries.includes(job.agency)) return acc
+        if (!acc[job.agency]) acc[job.agency] = []
+        acc[job.agency].push({ jobId: job.jobId, postingNo: job.postingNo })
+        return acc
+      }, {} as Record<string, { jobId: string, postingNo: string }[]>)
+
+      const [topAgency] = Object.entries(jobsByAgency).sort((a, b) => b[1].length - a[1].length)
+      if (!topAgency) {
+        return { output: { feature: undefined, jobs: [] } }
+      }
+      const [feature, agencyJobs] = topAgency
+      return { output: { feature, jobs: agencyJobs } }
+    }
+
+    case 'job title': {
+      // Match each listing against the canonical ROLE_TAGS vocabulary. A
+      // listing qualifies for a tag if the title matches, OR the requirements
+      // field has REQ_HIT_THRESHOLD+ keyword hits (single hits are usually
+      // incidental — see the const). Job description is intentionally not
+      // scanned: it's dominated by agency boilerplate that mentions every
+      // keyword. Take the mode tag, excluding tags featured in the recent
+      // window. Ties broken by latest startDate so fresh hiring activity wins.
+      const tagMatches = ROLE_TAGS
+        .filter(tag => !pastEntries.includes(tag.name))
+        .map(tag => {
+          const matched = itJobs.filter(job => {
+            if (tag.patterns.some(pattern => pattern.test(job.jobTitle))) return true
+            const reqHits = countMatches(stripHtml(job.jobRequirements), tag.patterns)
+            return reqHits >= REQ_HIT_THRESHOLD
+          })
+          const latestStartDate = matched.reduce(
+            (max, job) => Math.max(max, Number(job.startDate) || 0),
+            0,
+          )
+          return {
+            name: tag.name,
+            count: matched.length,
+            latestStartDate,
+            jobs: matched.map(job => ({ jobId: job.jobId, postingNo: job.postingNo })),
           }
-          return acc
-        }, {} as Record<string, { jobId: string, postingNo: string }[]>)
+        })
+        .filter(tag => tag.count > 0)
+        .sort((a, b) => b.count - a.count || b.latestStartDate - a.latestStartDate)
 
-      const sortedAgencies = Object.entries(jobsByAgency).sort((a, b) => b[1].length - a[1].length)
-      const mostCommonAgency = sortedAgencies[0]
-      if (!mostCommonAgency) {
-        return { 
-          output: { feature: undefined, jobs: [] },
-        }
+      const top = tagMatches[0]
+      if (!top) {
+        return { output: { feature: undefined, jobs: [] } }
       }
-      const [feature, jobsForMostCommonAgency] = mostCommonAgency
-      return { 
-        output: { feature, jobs: jobsForMostCommonAgency },
-      }
+      return { output: { feature: top.name, jobs: top.jobs } }
+    }
 
-    case 'job title':
-    default:
+    default: {
       // Grab jobId, postingNo, jobTitle, agency, remainingDays,
       // experienceYearsMin, experienceYearsMax
       // send those to the model to identify trends and specific roles to highlight
@@ -166,19 +223,20 @@ async function findFeature(featureType: 'job title' | 'agency', pastEntries: str
         model,
         system: 'You work for the Singapore Public Service, focusing on trends in hiring for information technology roles. ' +
           'You are methodical and detail-oriented, and do not make assumptions beyond the data that is presented to you.',
-        prompt: `Identify the most significant ${featureType} in the following job metadata.\n
-        ${pastEntries.length === 0 ? '' : `Absolutely avoid the following past ${featureType}s: ${pastEntries.join(', ')}\n`}
+        prompt: `Identify the most significant ${featureType ?? 'trend'} in the following job metadata.\n
+        ${!featureType || pastEntries.length === 0 ? '' : `Absolutely avoid the following past ${featureType}s: ${pastEntries.join(', ')}\n`}
         The CSV of job metadata to be featured is found below:\n${jobMetadata}\n
         `,
         output: Output.object({
           schema: z.object({
-            feature: z.string().describe(`The identified ${featureType}`),
+            feature: z.string().describe(`The identified ${featureType ?? 'trend'}`),
             jobs: z.array(z.object({
               jobId: z.string().describe('The job ID of the role'),
               postingNo: z.string().describe('The posting number of the role'),
-            })).describe(`A list of jobs that fit the identified ${featureType}`),
+            })).describe(`A list of jobs that fit the identified ${featureType ?? 'trend'}`),
           })
         })
       })
+    }
   }
 }

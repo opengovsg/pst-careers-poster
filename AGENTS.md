@@ -23,10 +23,11 @@ This service runs once a week (Vercel cron, `vercel.json`) to post a featured sl
 
 `workflows/generate-post/index.ts` runs `makeFeaturedPost` twice in parallel: once for `'job title'`, once for `'agency'`. Both go through `identifyFeatures` but the branches inside `findFeature` are deliberately different:
 
-- **`'agency'`** uses the statistical mode (most common agency in the listings, excluding those seen in the past 45 days). No LLM call.
-- **`'job title'`** sends job metadata to the LLM (via Vercel AI SDK `generateText` with a Zod `Output.object` schema) and asks it to pick a trend.
+- **`'agency'`** uses the statistical mode (most common agency in the listings, excluding those seen in the past 45 days).
+- **`'job title'`** matches each listing against a controlled vocabulary of canonical role tags in `workflows/generate-post/steps/identify-features/role-tags.ts`. A listing qualifies for a tag if its title matches, or its `jobRequirements` field has ≥2 keyword hits (single hits are usually incidental — agency boilerplate like CSA's "passion for cyber security" footer, or "basic knowledge of cybersecurity" in non-cyber engineering roles). The mode tag wins (excluding tags seen in the past 45 days), with ties broken by the latest `startDate` among matched listings. No LLM call — the vocabulary is the source of normalisation, so add a new `RoleTag` entry when a role type you want to feature is missing. `jobDescription` is intentionally not scanned because it's dominated by per-agency boilerplate that mentions every keyword.
+- A `default:` branch in `findFeature` retains the original LLM path for future calls with `featureType=undefined`, to support open-ended trend identification that doesn't fit the two named buckets. Currently unreachable due to the union type, but the path and its `ai`/`zod`/`model` imports are load-bearing for that future use — do not strip them.
 
-Both branches filter to `industry === 'InfoComm, Technology, New Media Communications'` — that string is hardcoded in `identify-features.ts`. If you need a different vertical, change it in both places.
+Both branches filter to the `IT_INDUSTRY` constant in `identify-features/index.ts` (`'InfoComm, Technology, New Media Communications'`). If you need a different vertical, change that constant.
 
 ### Deduplication state lives in Cloudflare KV
 
