@@ -1,0 +1,56 @@
+# AGENTS.md
+
+This file provides guidance to AI coding agents (Claude Code, GitHub Copilot, etc.) when working with code in this repository. `CLAUDE.md` and `.github/copilot-instructions.md` both resolve to this file.
+
+## Commands
+
+- `pnpm dev` — Nitro dev server.
+- `pnpm build` — Nitro build for Vercel (entryFormat: node).
+
+There is no test or lint script. Package manager is pnpm 10.
+
+## Architecture
+
+This service runs once a week (Vercel cron, `vercel.json`) to post a featured slice of Singapore public-service IT jobs to social channels. The end-to-end flow is small but spans several non-obvious primitives.
+
+### Request entry → durable workflow
+
+- `nitro.config.ts` routes **all** paths to `src/index.ts` (an Express app) and registers `workflow/nitro`. The single endpoint `GET /api/generate` is gated by a `CRON_SECRET` bearer header and calls `start(generatePost)`.
+- `src/index.ts` imports `./instrumentation.ts` first — this must stay first so the Langfuse/OTel `NodeSDK` boots before any instrumented module loads.
+- `workflows/generate-post/index.ts` is annotated `'use workflow'`; each file under `workflows/generate-post/steps/` is annotated `'use step'`. These directives are enabled by the `workflow` TypeScript plugin in `tsconfig.json` and the `workflow/nitro` Nitro module. Treat them as load-bearing — they turn the functions into durably-executed, retryable steps. Do not remove them when refactoring.
+
+### Feature selection has two divergent branches
+
+`workflows/generate-post/index.ts` runs `makeFeaturedPost` twice in parallel: once for `'job title'`, once for `'agency'`. Both go through `identifyFeatures` but the branches inside `findFeature` are deliberately different:
+
+- **`'agency'`** uses the statistical mode (most common agency in the listings, excluding those seen in the past 45 days). No LLM call.
+- **`'job title'`** sends job metadata to the LLM (via Vercel AI SDK `generateText` with a Zod `Output.object` schema) and asks it to pick a trend.
+
+Both branches filter to `industry === 'InfoComm, Technology, New Media Communications'` — that string is hardcoded in `identify-features.ts`. If you need a different vertical, change it in both places.
+
+### Deduplication state lives in Cloudflare KV
+
+`SimpleCloudflareKV` (inlined in `identify-features.ts`) writes the chosen feature into one of two namespaces (`CF_TITLES_KV`, `CF_AGENCIES_KV`) with a 45-day TTL via `expiration_ttl`. This is how the bot avoids re-featuring the same role/agency for ~6 weeks. The KV write is also the implicit "we committed to this feature" marker — it happens before the post is generated.
+
+### LLM provider is OpenAI-compatible, not necessarily OpenAI
+
+`workflows/shared/model.ts` calls `createOpenAI` with a custom `OPENAI_ENDPOINT`. Any OpenAI-compatible gateway (e.g., an internal OGP proxy) is the expected runtime. Do not assume openai.com.
+
+### Two `makePost` implementations exist
+
+- `workflows/generate-post/steps/make-post.ts` — submits to a **Fillout** form via `init` + `continue`. This is the one currently exported from `steps/index.ts` and used by the workflow.
+- `workflows/generate-post/steps/make-post-linkedin.ts` — posts directly to the **LinkedIn Posts API** (`Linkedin-Version: 202601`), gated by `DRY_RUN` for `feedDistribution`. Not currently wired up.
+
+If you switch the active implementation, change the export in `workflows/generate-post/steps/index.ts` — the workflow imports `makePost` from the barrel.
+
+### Trusted external inputs
+
+`JOB_LISTINGS_JSON_URL` resolves to an OGP-controlled GitHub URL. Treat the listings JSON as trusted infrastructure, not arbitrary user input — do not add sanitisation layers around it without a reason.
+
+### Observability
+
+`@langfuse/otel`'s `LangfuseSpanProcessor` is set to `flushAt: 1, exportMode: 'immediate'` because the process is a short-lived cron handler — spans must flush before the function exits.
+
+## Deployment
+
+Vercel. The cron in `vercel.json` (`30 8 * * 2` — Tuesday 08:30 UTC) hits `/api/generate` with Vercel's cron `Authorization: Bearer $CRON_SECRET` header. CodeQL runs on PRs to `develop` (the trunk) via `.github/workflows/codeql.yml`.
