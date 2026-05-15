@@ -11,7 +11,13 @@ app.get('/api/generate', async (req, res) => {
   if (authToken !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
-  await start(generatePost)
+
+  const feature = req.query.feature
+  if (feature !== 'job title' && feature !== 'agency') {
+    return res.status(400).json({ error: 'Invalid feature type' })
+  }
+
+  await start(generatePost, [feature])
   return res.json({ message: 'generate workflow started' })
 })
 export default app

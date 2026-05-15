@@ -2,8 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
-      "path": "/api/generate",
+      "path": "/api/generate?feature=agency",
       "schedule": "30 8 * * 2"
+    },
+    {
+      "path": "/api/generate?feature=job%20title",
+      "schedule": "30 8 * * 4"
     }
   ]
 }

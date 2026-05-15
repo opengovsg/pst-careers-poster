@@ -11,12 +11,8 @@ async function makeFeaturedPost(jobs: Record<string, string>[], featureType: 'jo
   }
 }
 
-export async function generatePost() {
-  'use workflow' 
+export async function generatePost(featureType: 'job title' | 'agency') {
+  'use workflow'
   const jobs = await getJobs()
-  const [jobTitle, agency] = await Promise.all([
-    makeFeaturedPost(jobs, 'job title'),
-    makeFeaturedPost(jobs, 'agency'),
-  ])
-  return { jobTitle, agency }
+  return makeFeaturedPost(jobs, featureType)
 }

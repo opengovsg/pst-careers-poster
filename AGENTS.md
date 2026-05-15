@@ -11,17 +11,17 @@ There is no test or lint script. Package manager is pnpm 10.
 
 ## Architecture
 
-This service runs once a week (Vercel cron, `vercel.json`) to post a featured slice of Singapore public-service IT jobs to social channels. The end-to-end flow is small but spans several non-obvious primitives.
+This service runs twice a week (Vercel cron, `vercel.json` — one cron per feature type) to post a featured slice of Singapore public-service IT jobs to social channels. The end-to-end flow is small but spans several non-obvious primitives.
 
 ### Request entry → durable workflow
 
-- `nitro.config.ts` routes **all** paths to `src/index.ts` (an Express app) and registers `workflow/nitro`. The single endpoint `GET /api/generate` is gated by a `CRON_SECRET` bearer header and calls `start(generatePost)`.
+- `nitro.config.ts` routes **all** paths to `src/index.ts` (an Express app) and registers `workflow/nitro`. The single endpoint `GET /api/generate` is gated by a `CRON_SECRET` bearer header and requires a `feature` query param of either `'job title'` or `'agency'`; the value is forwarded to `start(generatePost, [feature])`. Invalid/missing values 400.
 - `src/index.ts` imports `./instrumentation.ts` first — this must stay first so the Langfuse/OTel `NodeSDK` boots before any instrumented module loads.
 - `workflows/generate-post/index.ts` is annotated `'use workflow'`; each file under `workflows/generate-post/steps/` is annotated `'use step'`. These directives are enabled by the `workflow` TypeScript plugin in `tsconfig.json` and the `workflow/nitro` Nitro module. Treat them as load-bearing — they turn the functions into durably-executed, retryable steps. Do not remove them when refactoring.
 
 ### Feature selection has two divergent branches
 
-`workflows/generate-post/index.ts` runs `makeFeaturedPost` twice in parallel: once for `'job title'`, once for `'agency'`. Both go through `identifyFeatures` but the branches inside `findFeature` are deliberately different:
+`workflows/generate-post/index.ts` dispatches to `makeFeaturedPost` with the `featureType` passed in from the request (one invocation per cron — agencies on Tuesday, job titles on Thursday). Both paths go through `identifyFeatures` but the branches inside `findFeature` are deliberately different:
 
 - **`'agency'`** uses the statistical mode (most common agency in the listings, excluding those seen in the past 45 days).
 - **`'job title'`** matches each listing against a controlled vocabulary of canonical role tags in `workflows/generate-post/steps/identify-features/role-tags.ts`. A listing qualifies for a tag if its title matches, or its `jobRequirements` field has ≥2 keyword hits (single hits are usually incidental — agency boilerplate like CSA's "passion for cyber security" footer, or "basic knowledge of cybersecurity" in non-cyber engineering roles). The mode tag wins (excluding tags seen in the past 45 days), with ties broken by the latest `startDate` among matched listings. No LLM call — the vocabulary is the source of normalisation, so add a new `RoleTag` entry when a role type you want to feature is missing. `jobDescription` is intentionally not scanned because it's dominated by per-agency boilerplate that mentions every keyword.
@@ -54,4 +54,4 @@ If you switch the active implementation, change the export in `workflows/generat
 
 ## Deployment
 
-Vercel. The cron in `vercel.json` (`30 8 * * 2` — Tuesday 08:30 UTC) hits `/api/generate` with Vercel's cron `Authorization: Bearer $CRON_SECRET` header. CodeQL runs on PRs to `develop` (the trunk) via `.github/workflows/codeql.yml`.
+Vercel. Two crons in `vercel.json` hit `/api/generate` with Vercel's cron `Authorization: Bearer $CRON_SECRET` header: `30 8 * * 2` (Tuesday 08:30 UTC) with `?feature=agency`, and `30 8 * * 4` (Thursday 08:30 UTC) with `?feature=job%20title`. CodeQL runs on PRs to `develop` (the trunk) via `.github/workflows/codeql.yml`.
