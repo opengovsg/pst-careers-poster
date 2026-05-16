@@ -30,6 +30,8 @@ overrides:
   undici@<6.23.0: '>=6.23.0'
   undici@<6.24.0: '>=6.24.0'
   undici@>=6.0.0 <6.24.0: '>=6.24.0'
+  undici@>=7.0.0 <7.24.0: '>=7.24.0'
+  undici@>=7.17.0 <7.24.0: '>=7.24.0'
   workflow@<=4.1.0-beta.63: '>=4.2.0-beta.64'
 
 importers:
@@ -3046,10 +3048,6 @@ packages:
   undici-types@7.21.0:
     resolution: {integrity: sha512-w9IMgQrz4O0YN1LtB7K5P63vhlIOvC7opSmouCJ+ZywlPAlO9gIkJ+otk6LvGpAs2wg4econaCz3TvQ9xPoyuQ==}
 
-  undici@7.22.0:
-    resolution: {integrity: sha512-RqslV2Us5BrllB+JeiZnK4peryVTndy9Dnqq62S3yYRRTj0tFQCwEniUy2167skdGOy3vqRzEvl1Dm4sV2ReDg==}
-    engines: {node: '>=20.18.1'}
-
   undici@7.25.0:
     resolution: {integrity: sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ==}
     engines: {node: '>=20.18.1'}
@@ -4856,7 +4854,7 @@ snapshots:
       '@workflow/world': 4.1.1(zod@4.3.6)
       async-sema: 3.1.1
       ulid: 3.0.1
-      undici: 7.22.0
+      undici: 7.25.0
       zod: 4.3.6
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
@@ -4868,7 +4866,7 @@ snapshots:
       '@workflow/errors': 4.1.1
       '@workflow/world': 4.1.1(zod@4.3.6)
       cbor-x: 1.6.0
-      undici: 7.22.0
+      undici: 7.25.0
       zod: 4.3.6
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
@@ -6517,8 +6515,6 @@ snapshots:
   undici-types@7.16.0: {}
 
   undici-types@7.21.0: {}
-
-  undici@7.22.0: {}
 
   undici@7.25.0: {}
 
