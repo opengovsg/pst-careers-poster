@@ -38,7 +38,7 @@ export const ROLE_TAGS: RoleTag[] = [
   { name: 'IT Infrastructure Engineer', patterns: [/\b(?:it|ict) infrastructure\b/i, /\binfrastructure engineers?\b/i] },
   { name: 'Database Administrator', patterns: [/\bdatabase administrators?\b/i, /\bdba\b/i] },
   { name: 'IT Project Manager', patterns: [/\b(?:it|ict|tech(?:nology)?) project managers?\b/i] },
-  { name: 'IT Lecturer', patterns: [/\blecturer\b.*\b(?:it|ict|informatics|cyber|software|data|technolog|security|computing|engineering)\b/i, /\b(?:cyber|informatics) lecturer\b/i] },
+  { name: 'IT Lecturer', patterns: [/\blecturer\b.*\b(?:it|ict|informatics|cyber|software|data|technolog|security|computing)\b/i, /\b(?:cyber|informatics) lecturer\b/i] },
   { name: 'Quality Assurance Engineer', patterns: [/\bquality assurance\b/i, /\bqa engineers?\b/i, /\btest(?:ing)? engineers?\b/i, /\bsoftware testers?\b/i] },
   { name: 'Digital Transformation', patterns: [/\bdigital transformation\b/i, /\bdigital strategy\b/i] },
 ]

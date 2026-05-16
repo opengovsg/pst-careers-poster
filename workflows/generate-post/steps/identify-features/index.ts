@@ -1,7 +1,7 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
 import { model } from '../../../shared'
-import { ROLE_TAGS } from './role-tags'
+import { ROLE_TAGS, type RoleTag } from './role-tags'
 
 const JOB_PORTAL_URL_PREFIX = 'https://jobs.careers.gov.sg/jobs'
 const IT_INDUSTRY = 'InfoComm, Technology, New Media Communications'
@@ -23,6 +23,11 @@ function countMatches(text: string, patterns: RegExp[]): number {
       : new RegExp(pattern.source, pattern.flags + 'g')
     return sum + (text.match(global)?.length ?? 0)
   }, 0)
+}
+
+function matchesRoleTag(job: Record<string, string>, tag: RoleTag): boolean {
+  if (tag.patterns.some(pattern => pattern.test(job.jobTitle))) return true
+  return countMatches(stripHtml(job.jobRequirements), tag.patterns) >= REQ_HIT_THRESHOLD
 }
 
 class SimpleCloudflareKV {
@@ -116,7 +121,14 @@ type FeatureOutput = {
 }
 
 async function findFeature(featureType: 'job title' | 'agency', pastEntries: string[], jobs: Record<string, string>[]): Promise<FeatureOutput> {
-  const itJobs = jobs.filter(job => job.industry === IT_INDUSTRY)
+  // A listing counts as a "tech role" if its industry is IT, OR it matches any
+  // ROLE_TAG. The role-tag leg catches IT-shaped roles that agencies file under
+  // their org's primary industry (e.g. HDB software engineers under Engineering,
+  // MAS data analysts under Accounting, MilSec infosec under Enforcement).
+  const itJobs = jobs.filter(job =>
+    job.industry === IT_INDUSTRY ||
+    ROLE_TAGS.some(tag => matchesRoleTag(job, tag)),
+  )
 
   switch (featureType) {
     case 'agency': {
@@ -148,11 +160,7 @@ async function findFeature(featureType: 'job title' | 'agency', pastEntries: str
       const tagMatches = ROLE_TAGS
         .filter(tag => !pastEntries.includes(tag.name))
         .map(tag => {
-          const matched = itJobs.filter(job => {
-            if (tag.patterns.some(pattern => pattern.test(job.jobTitle))) return true
-            const reqHits = countMatches(stripHtml(job.jobRequirements), tag.patterns)
-            return reqHits >= REQ_HIT_THRESHOLD
-          })
+          const matched = itJobs.filter(job => matchesRoleTag(job, tag))
           const latestStartDate = matched.reduce(
             (max, job) => Math.max(max, Number(job.startDate) || 0),
             0,
@@ -180,19 +188,15 @@ async function findFeature(featureType: 'job title' | 'agency', pastEntries: str
       // send those to the model to identify trends and specific roles to highlight
       const jobMetadata = [
         'jobId,postingNo,jobTitle,agency,remainingDays,experienceYearsMin,experienceYearsMax',
-        ...jobs
-          .filter(job => ['InfoComm, Technology, New Media Communications'].includes(job.industry))
-          .map(job => [
-            job.jobId,
-            job.postingNo,
-            job.jobTitle,
-            job.agency,
-            job.remainingDays,
-            job.experienceYearsMin,
-            job.experienceYearsMax,
-          ]
-          .join(',')
-        )
+        ...itJobs.map(job => [
+          job.jobId,
+          job.postingNo,
+          job.jobTitle,
+          job.agency,
+          job.remainingDays,
+          job.experienceYearsMin,
+          job.experienceYearsMax,
+        ].join(','))
       ].join('\n')
       return await generateText({
         model,
