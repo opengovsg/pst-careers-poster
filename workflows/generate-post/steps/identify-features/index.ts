@@ -68,7 +68,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
   if (jobs.length === 0) {
     return {
       feature: 'No jobs available',
-      jobCsv: '',
+      jobs: [],
     }
   }
 
@@ -88,16 +88,15 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
   if (!output.feature) {
     return {
       feature: 'No jobs available',
-      jobCsv: '',
+      jobs: [],
     }
   }
 
   await kv.addKey(namespace, output.feature)
 
-  const jobCsv = [
-    'postingNo,jobId,jobTitle,agency,agencyDescription,closingDateText,remainingDays,experienceYearsMin,experienceYearsMax,url,jobDescription,jobRequirements',
-    [...Object.keys(jobs[0]),'url'].join(','),
-    jobs
+  return {
+    feature: output.feature,
+    jobs: jobs
       .filter(job => 
         output.jobs.some(
           ({ jobId, postingNo }) => 
@@ -105,31 +104,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
             postingNo === job.postingNo
         )
       )
-      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.platform}/${job.postingNo ? `${job.jobId}/${job.postingNo}` : job.jobId}?utm_source=pst-careers&utm_medium=linkedin&utm_campaign=post`} as Record<string, string>))
-      .map(
-        job => [
-          job.postingNo,
-          job.jobId,
-          job.jobTitle,
-          job.agency,
-          job.agencyDescription,
-          job.closingDateText,
-          job.remainingDays,
-          job.experienceYearsMin,
-          job.experienceYearsMax,
-          job.url,
-          job.jobDescription,
-          job.jobRequirements,
-        ]
-        .map(value => `"${`${value}`.replace(/"/g, '""')}"`)
-        .join(',')
-      )
-  ].join('\n')
-  
-
-  return {
-    feature: output.feature,
-    jobCsv,
+      .map(job => ({...job, url: `${JOB_PORTAL_URL_PREFIX}/${job.platform}/${job.postingNo ? `${job.jobId}/${job.postingNo}` : job.jobId}?utm_source=pst-careers&utm_medium=linkedin&utm_campaign=post`} as Record<string, string>)),
   }
 }
 

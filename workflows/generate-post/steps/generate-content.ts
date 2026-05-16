@@ -1,15 +1,38 @@
 import { generateText } from 'ai'
 import { model } from '../../shared'
 
-export async function generateContent(feature: string, jobs: string): Promise<string> {
+export async function generateContent(feature: string, jobs: Record<string, string>[]): Promise<string> {
   'use step'
+
+  const jobCsv = [
+    'postingNo,jobId,jobTitle,agency,agencyDescription,closingDateText,remainingDays,experienceYearsMin,experienceYearsMax,url,jobDescription,jobRequirements',
+    ...jobs
+      .map(
+        job => [
+          job.postingNo,
+          job.jobId,
+          job.jobTitle,
+          job.agency,
+          job.agencyDescription,
+          job.closingDateText,
+          job.remainingDays,
+          job.experienceYearsMin,
+          job.experienceYearsMax,
+          job.url,
+          job.jobDescription,
+          job.jobRequirements,
+        ]
+        .map(value => `"${`${value}`.replace(/"/g, '""')}"`)
+        .join(',')
+      ),
+  ].join('\n')
 
   const result = await generateText({
     model,
     system: 'You are a recruiter for the Singapore Public Service, focusing on hiring for information technology roles. You are upbeat yet professional, and care about helping people make an impact through their work.',
     prompt: `Write a friendly and engaging LinkedIn post about the infotech roles in the following job listings from the Singapore Public Service.
     Focus on ${feature}.
-    The CSV of job listings to be featured is found below:\n${jobs}\n
+    The CSV of job listings to be featured is found below:\n${jobCsv}\n
     You MUST follow these instructions when generating the post:
     - CRITICAL RULE — EVERY JOB LISTING MUST HAVE ITS URL ON THE SAME LINE. A post without URLs is unusable because applicants cannot apply. If you omit a URL, the post fails. The URL must be the full URL exactly as it appears in the CSV (including the trailing UUID and the utm_source/utm_medium/utm_campaign query parameters). Do not shorten, summarise, or omit any URL.
     - HARD LENGTH CAP — the final post MUST be at most 2400 characters. Aim for 2200 characters to leave a safety margin; LinkedIn will truncate anything longer with a "see more" cut. If you are close to the limit, drop lower-priority roles rather than abbreviating titles, dropping URLs, or shortening agency descriptions. Count characters before returning.

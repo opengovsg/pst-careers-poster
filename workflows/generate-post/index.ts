@@ -1,11 +1,11 @@
 import { generateContent, getJobs, makePost, identifyFeatures } from './steps'
 
 async function makeFeaturedPost(jobs: Record<string, string>[], featureType: 'job title' | 'agency') {
-  const { feature, jobCsv } = await identifyFeatures(jobs, featureType)
-  if (jobCsv === '') {
+  const { feature, jobs: featuredJobs } = await identifyFeatures(jobs, featureType)
+  if (featuredJobs.length === 0) {
     return { post: null, content: feature }
   } else {
-    const content = await generateContent(feature, jobCsv)
+    const content = await generateContent(feature, featuredJobs)
     const post = await makePost(content)
     return { post, content }
   }

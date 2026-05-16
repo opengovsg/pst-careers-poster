@@ -29,6 +29,12 @@ This service runs twice a week (Vercel cron, `vercel.json` — one cron per feat
 
 Both branches filter to the `IT_INDUSTRY` constant in `identify-features/index.ts` (`'InfoComm, Technology, New Media Communications'`). If you need a different vertical, change that constant.
 
+### Step boundary: `identifyFeatures` returns jobs, `generateContent` serialises
+
+`identifyFeatures` returns `{feature, jobs: Record<string, string>[]}` — the filtered listings with URL augmentation already applied. CSV serialisation lives inside `generateContent`, built immediately before `generateText()`. This split exists so the writer step owns its own input format: future work that wants to project columns, dedupe agency fields, switch to per-agency blocks, or emit JSON instead of CSV can do so without touching `identifyFeatures`.
+
+Empty-result sentinel is `jobs.length === 0` (returned from both the no-input and no-feature paths in `identifyFeatures`). Callers must short-circuit on this before calling `generateContent`; the writer doesn't crash on empty input but would emit a header-only CSV to the model, producing degenerate output.
+
 ### Deduplication state lives in Cloudflare KV
 
 `SimpleCloudflareKV` (inlined in `identify-features.ts`) writes the chosen feature into one of two namespaces (`CF_TITLES_KV`, `CF_AGENCIES_KV`) with a 45-day TTL via `expiration_ttl`. This is how the bot avoids re-featuring the same role/agency for ~6 weeks. The KV write is also the implicit "we committed to this feature" marker — it happens before the post is generated.
