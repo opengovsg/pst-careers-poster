@@ -29,11 +29,19 @@ This service runs twice a week (Vercel cron, `vercel.json` — one cron per feat
 
 Both branches filter to a "tech role" pool defined by `findFeature` as `industry === IT_INDUSTRY` **OR** matches any `ROLE_TAG`. The role-tag leg is what catches IT-shaped roles that agencies file under their org's primary industry (HDB software engineers under `Engineering`, MAS data analysts under `Accounting`, MilSec infosec under `Enforcement`). This means `ROLE_TAGS` is load-bearing not just for *feature selection* on the `'job title'` branch, but also for *visibility* of non-IT-industry listings on the `'agency'` branch — a missing tag silently excludes such listings from both paths. If you need a different vertical, change `IT_INDUSTRY` or extend `ROLE_TAGS`.
 
-### Step boundary: `identifyFeatures` returns jobs, `generateContent` serialises
+### Two-call architecture: `generateContent` ranks then writes
 
-`identifyFeatures` returns `{feature, jobs: Record<string, string>[]}` — the filtered listings with URL augmentation already applied. CSV serialisation lives inside `generateContent`, built immediately before `generateText()`. This split exists so the writer step owns its own input format: future work that wants to project columns, dedupe agency fields, switch to per-agency blocks, or emit JSON instead of CSV can do so without touching `identifyFeatures`.
+`identifyFeatures` returns `{feature, jobs: Record<string, string>[]}` — the filtered listings with URL augmentation already applied. `generateContent` then makes **two** narrow LLM calls and assembles the post deterministically:
 
-Empty-result sentinel is `jobs.length === 0` (returned from both the no-input and no-feature paths in `identifyFeatures`). Callers must short-circuit on this before calling `generateContent`; the writer doesn't crash on empty input but would emit a header-only CSV to the model, producing degenerate output.
+1. **Listings call** — slim CSV (id, jobTitle, agency, remainingDays, experienceYearsMin/Max) with a leading integer `id` column. The model is asked to output 6-10 integer ids, one per line — no titles, no URLs, no prose. The runner validates each id against an `idToRow` map, dedups, and joins back to canonical `{jobTitle, agency, url}` from the source data. URLs are never reproduced by the model. The call is retried once if fewer than 6 valid ids parse after dedup (best-of-N across attempts); throws only if every attempt yields zero.
+2. **Intro call** — receives the chosen `Title — Agency` pairs (no URLs, no CSV) and writes a 1-2 sentence hook.
+3. **Deterministic assembly** — intro + blank line + listings grouped by agency (agency as section header, `- Title - URL` lines underneath, sections ordered by count desc with insertion-order ties; single-agency picks emit a flat bullet list with no header) + blank line + boilerplate closing. Parens are escaped at the end for the Fillout → LinkedIn route.
+
+`maxOutputTokens` is `8192` for the listings call and `4096` for the intro call. These tolerate reasoning-class models that burn the completion budget on chain-of-thought before emitting any user-facing token; lower values silently truncate with `finish_reason: length`. Llama-class non-reasoning models are unaffected by the larger limits.
+
+The constraints that used to live in `generateContent`'s prompt (URL preservation, 2,400-char cap, agency grouping, markdown bans, British English) are now either deterministic concerns (URL/length/grouping) or moot because the intro's tiny output surface gives the model no room to misbehave.
+
+Empty-result sentinel is `jobs.length === 0` (returned from both the no-input and no-feature paths in `identifyFeatures`). Callers must short-circuit on this before calling `generateContent`; the writer would otherwise emit a header-only CSV to the model and almost certainly throw the no-valid-ids error after retries.
 
 ### Deduplication state lives in Cloudflare KV
 

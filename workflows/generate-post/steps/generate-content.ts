@@ -1,56 +1,117 @@
 import { generateText } from 'ai'
 import { model } from '../../shared'
 
+// Two-call (rank then write) architecture with an integer row-ID frame.
+// Rationale, alternatives, and consequences: docs/adr/0003-two-call-generate-content.md.
+
+const LISTINGS_SYSTEM =
+  'You select roles from a list of Singapore Public Service IT job openings for inclusion in a LinkedIn careers post about a specific topic. Each candidate role has a numeric id. Optimise for: title legibility (a LinkedIn scroller should recognise the role at a glance), agency diversity (cap ~3 per agency), seniority spread (mix junior, mid, senior), and dedup of near-identical titles within the same agency. Pick 6-10 roles. Output exactly one numeric id per line — just the integer, nothing else. No titles, no URLs, no prose, no preamble, no closing remarks, no markdown, no headers.'
+
+const INTRO_SYSTEM =
+  'You write LinkedIn careers post hooks for the Singapore Public Service. Style: professional and energetic without being corny, no buzzwords, no markdown formatting (no asterisks, no headers, no bullet points). Strictly 1-2 sentences, around 200-300 characters total. Hook the reader with what is specifically interesting about this hiring slice — not generic public-service platitudes.'
+
+const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hiring'
+
+// Floor check: the listings prompt asks for 6-10 roles. If a sampling produces
+// fewer than RANKING_FLOOR valid ids after dedup + range validation, re-roll
+// once. Take the best-of-N (most ids) across attempts; throw only if every
+// attempt yields zero.
+const RANKING_FLOOR = 6
+const RANKING_MAX_ATTEMPTS = 2
+
 export async function generateContent(feature: string, jobs: Record<string, string>[]): Promise<string> {
   'use step'
 
-  const jobCsv = [
-    'postingNo,jobId,jobTitle,agency,agencyDescription,closingDateText,remainingDays,experienceYearsMin,experienceYearsMax,url,jobDescription,jobRequirements',
-    ...jobs
-      .map(
-        job => [
-          job.postingNo,
-          job.jobId,
-          job.jobTitle,
-          job.agency,
-          job.agencyDescription,
-          job.closingDateText,
-          job.remainingDays,
-          job.experienceYearsMin,
-          job.experienceYearsMax,
-          job.url,
-          job.jobDescription,
-          job.jobRequirements,
-        ]
-        .map(value => `"${`${value}`.replace(/"/g, '""')}"`)
-        .join(',')
-      ),
+  const listingsCsv = [
+    'id,jobTitle,agency,remainingDays,experienceYearsMin,experienceYearsMax',
+    ...jobs.map((job, i) =>
+      [i + 1, job.jobTitle, job.agency, job.remainingDays, job.experienceYearsMin, job.experienceYearsMax]
+        .map(value => `"${`${value ?? ''}`.replace(/"/g, '""')}"`)
+        .join(','),
+    ),
   ].join('\n')
 
-  const result = await generateText({
+  const idToRow = new Map<number, Record<string, string>>()
+  jobs.forEach((job, i) => idToRow.set(i + 1, job))
+
+  const rankingPrompt = `Feature: ${feature}
+
+Candidate roles (CSV; the leading "id" column is the integer you will return):
+${listingsCsv}
+
+Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Output exactly one numeric id per line, no other text.`
+
+  const parseRanking = (text: string) => {
+    const seen = new Set<number>()
+    const out: { id: number, row: Record<string, string> }[] = []
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.trim()
+      if (!line) continue
+      const m = line.match(/^[\s\-*[\]]*(\d{1,4})\b/)
+      if (!m) continue
+      const id = parseInt(m[1], 10)
+      if (!idToRow.has(id) || seen.has(id)) continue
+      seen.add(id)
+      out.push({ id, row: idToRow.get(id)! })
+    }
+    return out
+  }
+
+  let ranked: { id: number, row: Record<string, string> }[] = []
+  let lastRawText = ''
+  for (let attempt = 1; attempt <= RANKING_MAX_ATTEMPTS; attempt++) {
+    const rankRes = await generateText({
+      model,
+      maxOutputTokens: 8192,
+      system: LISTINGS_SYSTEM,
+      prompt: rankingPrompt,
+    })
+    lastRawText = rankRes.text
+    const parsed = parseRanking(rankRes.text)
+    if (parsed.length > ranked.length) ranked = parsed
+    if (ranked.length >= RANKING_FLOOR) break
+  }
+
+  if (ranked.length === 0) {
+    throw new Error(`generateContent: no valid listing IDs parsed across ${RANKING_MAX_ATTEMPTS} attempts (last raw text: ${lastRawText.slice(0, 200)})`)
+  }
+
+  const introRes = await generateText({
     model,
-    system: 'You are a recruiter for the Singapore Public Service, focusing on hiring for information technology roles. You are upbeat yet professional, and care about helping people make an impact through their work.',
-    prompt: `Write a friendly and engaging LinkedIn post about the infotech roles in the following job listings from the Singapore Public Service.
-    Focus on ${feature}.
-    The CSV of job listings to be featured is found below:\n${jobCsv}\n
-    You MUST follow these instructions when generating the post:
-    - CRITICAL RULE — EVERY JOB LISTING MUST HAVE ITS URL ON THE SAME LINE. A post without URLs is unusable because applicants cannot apply. If you omit a URL, the post fails. The URL must be the full URL exactly as it appears in the CSV (including the trailing UUID and the utm_source/utm_medium/utm_campaign query parameters). Do not shorten, summarise, or omit any URL.
-    - HARD LENGTH CAP — the final post MUST be at most 2400 characters. Aim for 2200 characters to leave a safety margin; LinkedIn will truncate anything longer with a "see more" cut. If you are close to the limit, drop lower-priority roles rather than abbreviating titles, dropping URLs, or shortening agency descriptions. Count characters before returning.
-    - Group job listings by kind of role or by agency, whichever is more appropriate for the feature.
-    - For each job group, list each job on its own line in EXACTLY this format: <title> - <url>
-    - Example of a correctly formatted line: Cybersecurity Consultant (AI), Cybersecurity Engineering Centre - https://jobs.careers.gov.sg/jobs/hrp/17525435/005056a3-53e2-1fd1-91ed-807cdd65b3ef?utm_source=pst-careers&utm_medium=linkedin&utm_campaign=post
-    - If the job group pertains to an agency, include a short sentence about what the agency does.
-    - Generate the post in plain text. DO NOT include any markdown or special formatting.
-    - DO NOT USE **. DO NOT USE __. NO EMPHASIS FORMATTING OF ANY KIND.
-    - When mentioning an agency for the first time, use its full name followed by its abbreviation in parentheses. For example, "Government Technology Agency (GovTech)".
-    - Where you can include the #hiring hashtag, please do so.
-    - USE PASSIVE VOICE. DO NOT EVER REFER TO YOURSELF.
-    - Use British English, and ensure date formats follow the day month year format (e.g., 25 December 2023).
-    - Highlight how the roles make a positive impact in the community.
-    - Keep the tone upbeat and approachable.
-    - At the end of the post, include a short sentence so that readers who did not find suitable roles can still browse for other roles at go.gov.sg/pst-roles.
-    - Before you finish: re-read your post and verify that (a) every job listing line contains a URL, and (b) the total character count is at most 2400. If either check fails, fix the post before returning your answer.`,
+    maxOutputTokens: 4096,
+    system: INTRO_SYSTEM,
+    prompt: `Feature: ${feature}
+
+Roles featured in this post (title — agency):
+${ranked.map(({ row }) => `- ${row.jobTitle} — ${row.agency}`).join('\n')}
+
+Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`,
   })
 
-  return result.text.replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+  // Group by agency, sections ordered by count desc, ties broken by the
+  // model's first-pick order (Map preserves insertion order; Array.sort is
+  // stable since ES2019).
+  const byAgency = new Map<string, typeof ranked>()
+  for (const r of ranked) {
+    if (!byAgency.has(r.row.agency)) byAgency.set(r.row.agency, [])
+    byAgency.get(r.row.agency)!.push(r)
+  }
+  // When all selected listings belong to one agency (any 'agency'-feature run,
+  // and the occasional role-tag run where all picks happen to share an agency),
+  // drop the redundant agency header and emit a flat bullet list.
+  const listingsBlock = byAgency.size === 1
+    ? ranked.map(({ row }) => `- ${row.jobTitle} - ${row.url}`).join('\n')
+    : Array.from(byAgency.entries())
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([agency, items]) =>
+          `${agency}\n${items.map(({ row }) => `- ${row.jobTitle} - ${row.url}`).join('\n')}`,
+        )
+        .join('\n\n')
+
+  const assembled = `${introRes.text.trim()}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
+
+  // Escape parens: the post is submitted to a Fillout form that forwards to
+  // LinkedIn, which treats unescaped parens as link syntax. Titles like
+  // "Government Technology Agency (GovTech)" would otherwise mangle.
+  return assembled.replace(/\(/g, '\\(').replace(/\)/g, '\\)')
 }

@@ -1,9 +1,12 @@
-import { createOpenAI } from '@ai-sdk/openai'
+import { createAiGateway } from 'ai-gateway-provider';
+import { createUnified } from 'ai-gateway-provider/providers/unified';
 
-export const provider = createOpenAI({
-  name: 'engine',
-  baseURL: process.env.OPENAI_ENDPOINT!,
-  apiKey: process.env.OPENAI_API_KEY!,
+export const provider = createAiGateway({
+  accountId: process.env.CLOUDFLARE_ACCOUNT_ID!,
+  gateway: 'default',
+  apiKey: process.env.CLOUDFLARE_API_TOKEN!,
 })
 
-export const model = provider(process.env.OPENAI_MODEL_NAME!)
+const unified = createUnified()
+
+export const model = provider(unified(process.env.CF_AI_MODEL_NAME!))
