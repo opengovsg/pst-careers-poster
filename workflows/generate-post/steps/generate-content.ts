@@ -78,7 +78,7 @@ Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Out
 
   const introRes = await generateText({
     model,
-    maxOutputTokens: 4096,
+    maxOutputTokens: 8192,
     system: INTRO_SYSTEM,
     prompt: `Feature: ${feature}
 

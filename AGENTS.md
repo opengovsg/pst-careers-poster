@@ -37,7 +37,7 @@ Both branches filter to a "tech role" pool defined by `findFeature` as `industry
 2. **Intro call** — receives the chosen `Title — Agency` pairs (no URLs, no CSV) and writes a 1-2 sentence hook.
 3. **Deterministic assembly** — intro + blank line + listings grouped by agency (agency as section header, `- Title - URL` lines underneath, sections ordered by count desc with insertion-order ties; single-agency picks emit a flat bullet list with no header) + blank line + boilerplate closing. Parens are escaped at the end for the Fillout → LinkedIn route.
 
-`maxOutputTokens` is `8192` for the listings call and `4096` for the intro call. These tolerate reasoning-class models that burn the completion budget on chain-of-thought before emitting any user-facing token; lower values silently truncate with `finish_reason: length`. Llama-class non-reasoning models are unaffected by the larger limits.
+`maxOutputTokens` is `8192` for both calls. These tolerate reasoning-class models that burn the completion budget on chain-of-thought before emitting any user-facing token; lower values silently truncate with `finish_reason: length`. The intro call needs this same headroom because the two-paragraph rhythm-aware prompt sends Gemma's reasoning into a draft→critique→redraft loop that 4096 tokens couldn't contain (1-in-3 empty-output rate observed in eval; cleared at 8192). Llama-class non-reasoning models are unaffected by the larger limits.
 
 The constraints that used to live in `generateContent`'s prompt (URL preservation, 2,400-char cap, agency grouping, markdown bans, British English) are now either deterministic concerns (URL/length/grouping) or moot because the intro's tiny output surface gives the model no room to misbehave.
 
