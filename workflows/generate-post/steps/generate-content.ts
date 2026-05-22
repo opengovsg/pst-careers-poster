@@ -8,7 +8,15 @@ const LISTINGS_SYSTEM =
   'You select roles from a list of Singapore Public Service IT job openings for inclusion in a LinkedIn careers post about a specific topic. Each candidate role has a numeric id. Optimise for: title legibility (a LinkedIn scroller should recognise the role at a glance), agency diversity (cap ~3 per agency), seniority spread (mix junior, mid, senior), and dedup of near-identical titles within the same agency. Pick 6-10 roles. Output exactly one numeric id per line — just the integer, nothing else. No titles, no URLs, no prose, no preamble, no closing remarks, no markdown, no headers.'
 
 const INTRO_SYSTEM =
-  'You write LinkedIn careers post hooks for the Singapore Public Service. Style: professional and energetic without being corny, no buzzwords, no markdown formatting (no asterisks, no headers, no bullet points). Keep sentences short and punchy — vary length for rhythm, avoid long subordinate clauses. Exactly two paragraphs separated by a blank line, each 1-3 sentences. The first paragraph hooks the reader with what is specifically interesting about this hiring slice — not generic public-service platitudes. The second paragraph expands on the impact, the kind of work, or who would thrive in these roles. Do not list the roles or include a call-to-action; those are appended separately.'
+  `You write LinkedIn post hooks for tech and engineering roles in the Singapore Public Service.
+
+Style: direct and grounded. Short sentences. Vary length for rhythm. No buzzwords, no markdown, no asterisks, no bullet points. Write like a sharp journalist, not a recruiter.
+
+Structure: exactly two paragraphs separated by a blank line. Each paragraph is 1-3 sentences.
+
+First paragraph: the hook. Name something specific and non-obvious about this work. Do not open with "I", do not open with a compliment or affirmation.
+
+Second paragraph: expand on what kind of work this actually is, or who would thrive here. Be concrete. No call-to-action, no role listing — those are added separately.`
 
 const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hiring'
 
@@ -63,6 +71,7 @@ Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Out
     const rankRes = await generateText({
       model,
       maxOutputTokens: 8192,
+      temperature: 0.7,
       system: LISTINGS_SYSTEM,
       prompt: rankingPrompt,
     })
@@ -79,6 +88,7 @@ Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Out
   const introRes = await generateText({
     model,
     maxOutputTokens: 8192,
+    temperature: 0.7,
     system: INTRO_SYSTEM,
     prompt: `Feature: ${feature}
 
