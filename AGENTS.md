@@ -47,9 +47,9 @@ Empty-result sentinel is `jobs.length === 0` (returned from both the no-input an
 
 `SimpleCloudflareKV` (inlined in `identify-features.ts`) writes the chosen feature into one of two namespaces (`CF_TITLES_KV`, `CF_AGENCIES_KV`) with a 45-day TTL via `expiration_ttl`. This is how the bot avoids re-featuring the same role/agency for ~6 weeks. The KV write is also the implicit "we committed to this feature" marker — it happens before the post is generated.
 
-### LLM provider is OpenAI-compatible, not necessarily OpenAI
+### LLM provider is Cloudflare AI Gateway
 
-`workflows/shared/model.ts` calls `createOpenAI` with a custom `OPENAI_ENDPOINT`. Any OpenAI-compatible gateway (e.g., an internal OGP proxy) is the expected runtime. Do not assume openai.com.
+`workflows/shared/model.ts` wires the model through Cloudflare's AI Gateway via `ai-gateway-provider`'s `createAiGateway` + `createUnified`. Required env vars: `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, and `CF_AI_MODEL_NAME` (the unified provider's `provider/model` slug). The gateway name is hard-coded to `default`. Do not reintroduce `createOpenAI`/`OPENAI_ENDPOINT` plumbing — the gateway handles routing across upstream providers.
 
 ### Two `makePost` implementations exist
 
