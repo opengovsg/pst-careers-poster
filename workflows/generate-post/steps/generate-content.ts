@@ -14,7 +14,7 @@ Style: direct and grounded. Short sentences. Vary length for rhythm. No buzzword
 
 Structure: exactly two paragraphs separated by a blank line. Each paragraph is 1-3 sentences.
 
-First paragraph: the hook. Name something specific and non-obvious about this work. Do not open with "I", do not open with a compliment or affirmation.
+First paragraph: the hook. Name something specific about this work. Do not open with "I", do not open with a compliment or affirmation.
 
 Second paragraph: expand on what kind of work this actually is, or who would thrive here. Be concrete. No call-to-action, no role listing — those are added separately.`
 
