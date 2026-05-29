@@ -1,6 +1,8 @@
 import { generateContent, getJobs, makePost, identifyFeatures } from './steps'
 
-async function makeFeaturedPost(jobs: Record<string, string>[], featureType: 'job title' | 'agency') {
+type FeatureType = 'job title' | 'agency' | 'trend'
+
+async function makeFeaturedPost(jobs: Record<string, string>[], featureType: FeatureType) {
   const { feature, jobs: featuredJobs } = await identifyFeatures(jobs, featureType)
   if (featuredJobs.length === 0) {
     return { post: null, content: feature }
@@ -11,7 +13,7 @@ async function makeFeaturedPost(jobs: Record<string, string>[], featureType: 'jo
   }
 }
 
-export async function generatePost(featureType: 'job title' | 'agency') {
+export async function generatePost(featureType: FeatureType) {
   'use workflow'
   const jobs = await getJobs()
   return makeFeaturedPost(jobs, featureType)

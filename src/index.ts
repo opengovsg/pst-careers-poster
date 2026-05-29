@@ -13,7 +13,7 @@ app.get('/api/generate', async (req, res) => {
   }
 
   const feature = req.query.feature
-  if (feature !== 'job title' && feature !== 'agency') {
+  if (feature !== 'job title' && feature !== 'agency' && feature !== 'trend') {
     return res.status(400).json({ error: 'Invalid feature type' })
   }
 

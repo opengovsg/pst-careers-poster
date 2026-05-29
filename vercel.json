@@ -6,6 +6,10 @@
       "schedule": "30 8 * * 2"
     },
     {
+      "path": "/api/generate?feature=trend",
+      "schedule": "30 8 * * 3"
+    },
+    {
       "path": "/api/generate?feature=job%20title",
       "schedule": "30 8 * * 4"
     }

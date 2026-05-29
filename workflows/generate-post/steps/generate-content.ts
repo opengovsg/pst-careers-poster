@@ -27,12 +27,20 @@ const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hi
 const RANKING_FLOOR = 6
 const RANKING_MAX_ATTEMPTS = 2
 
-export async function generateContent(feature: string, jobs: Record<string, string>[], featureType: 'job title' | 'agency'): Promise<string> {
+export async function generateContent(feature: string, jobs: Record<string, string>[], featureType: 'job title' | 'agency' | 'trend'): Promise<string> {
   'use step'
 
+  // Trend mode: the feature string is already a 1-2 sentence narrative
+  // produced by identifyFeatures (combining headline + rationale). It serves
+  // directly as the post's intro, so we skip both the title template and the
+  // INTRO_SYSTEM call. Listings ranking still runs — the trend identification
+  // returned 4-12 candidates and the ranker enforces dedup, agency diversity,
+  // and seniority spread regardless of feature source.
   const title = featureType === 'agency'
     ? `${feature} is hiring across its tech teams.`
-    : `${feature} roles across the Singapore Public Service.`
+    : featureType === 'job title'
+      ? `${feature} roles across the Singapore Public Service.`
+      : null
 
   const listingsCsv = [
     'id,jobTitle,agency,remainingDays,experienceYearsMin,experienceYearsMax',
@@ -89,18 +97,20 @@ Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Out
     throw new Error(`generateContent: no valid listing IDs parsed across ${RANKING_MAX_ATTEMPTS} attempts (last raw text: ${lastRawText.slice(0, 200)})`)
   }
 
-  const introRes = await generateText({
-    model,
-    maxOutputTokens: 8192,
-    temperature: 0.7,
-    system: INTRO_SYSTEM,
-    prompt: `Feature: ${feature}
+  const introText = featureType === 'trend'
+    ? feature
+    : (await generateText({
+        model,
+        maxOutputTokens: 8192,
+        temperature: 0.7,
+        system: INTRO_SYSTEM,
+        prompt: `Feature: ${feature}
 
 Roles featured in this post (title — agency):
 ${ranked.map(({ row }) => `- ${row.jobTitle} — ${row.agency}`).join('\n')}
 
 Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`,
-  })
+      })).text
 
   // Group by agency, sections ordered by count desc, ties broken by the
   // model's first-pick order (Map preserves insertion order; Array.sort is
@@ -122,7 +132,8 @@ Write the opening hook only. Do not list the roles, do not include URLs, do not 
         )
         .join('\n\n')
 
-  const assembled = `${title}\n\n${introRes.text.trim()}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
+  const header = title ? `${title}\n\n${introText.trim()}` : introText.trim()
+  const assembled = `${header}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
 
   // Escape parens: the post is submitted to a Fillout form that forwards to
   // LinkedIn, which treats unescaped parens as link syntax. Titles like
