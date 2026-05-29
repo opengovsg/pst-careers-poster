@@ -27,8 +27,12 @@ const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hi
 const RANKING_FLOOR = 6
 const RANKING_MAX_ATTEMPTS = 2
 
-export async function generateContent(feature: string, jobs: Record<string, string>[]): Promise<string> {
+export async function generateContent(feature: string, jobs: Record<string, string>[], featureType: 'job title' | 'agency'): Promise<string> {
   'use step'
+
+  const title = featureType === 'agency'
+    ? `${feature} is hiring across its tech teams.`
+    : `${feature} roles across the Singapore Public Service.`
 
   const listingsCsv = [
     'id,jobTitle,agency,remainingDays,experienceYearsMin,experienceYearsMax',
@@ -118,7 +122,7 @@ Write the opening hook only. Do not list the roles, do not include URLs, do not 
         )
         .join('\n\n')
 
-  const assembled = `${introRes.text.trim()}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
+  const assembled = `${title}\n\n${introRes.text.trim()}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
 
   // Escape parens: the post is submitted to a Fillout form that forwards to
   // LinkedIn, which treats unescaped parens as link syntax. Titles like

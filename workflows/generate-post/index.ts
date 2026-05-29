@@ -5,7 +5,7 @@ async function makeFeaturedPost(jobs: Record<string, string>[], featureType: 'jo
   if (featuredJobs.length === 0) {
     return { post: null, content: feature }
   } else {
-    const content = await generateContent(feature, featuredJobs)
+    const content = await generateContent(feature, featuredJobs, featureType)
     const post = await makePost(content)
     return { post, content }
   }
