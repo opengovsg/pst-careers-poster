@@ -1,5 +1,6 @@
 import { generateText } from 'ai'
 import { model } from '../../shared'
+import { disciplineOf } from './identify-features/role-tags'
 
 // Two-call (rank then write) architecture with an integer row-ID frame.
 // Rationale, alternatives, and consequences: docs/adr/0003-two-call-generate-content.md.
@@ -113,23 +114,32 @@ ${ranked.map(({ row }) => `- ${row.jobTitle} — ${row.agency}`).join('\n')}
 Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`,
       })).text
 
-  // Group by agency, sections ordered by count desc, ties broken by the
-  // model's first-pick order (Map preserves insertion order; Array.sort is
-  // stable since ES2019).
-  const byAgency = new Map<string, typeof ranked>()
+  // Section headings depend on the feature: a 'job title' post is about one
+  // discipline spanning many agencies, so it groups by agency; an 'agency' or
+  // 'trend' post spans many disciplines (within one agency, or across several),
+  // so it groups by discipline. disciplineOf reuses the same role-tag matcher
+  // as feature selection.
+  const groupOf = featureType === 'job title'
+    ? (row: Record<string, string>) => row.agency
+    : (row: Record<string, string>) => disciplineOf(row)
+
+  // Sections ordered by count desc, ties broken by the model's first-pick order
+  // (Map preserves insertion order; Array.sort is stable since ES2019).
+  const byGroup = new Map<string, typeof ranked>()
   for (const r of ranked) {
-    if (!byAgency.has(r.row.agency)) byAgency.set(r.row.agency, [])
-    byAgency.get(r.row.agency)!.push(r)
+    const key = groupOf(r.row)
+    if (!byGroup.has(key)) byGroup.set(key, [])
+    byGroup.get(key)!.push(r)
   }
-  // When all selected listings belong to one agency (any 'agency'-feature run,
-  // and the occasional role-tag run where all picks happen to share an agency),
-  // drop the redundant agency header and emit a flat bullet list.
-  const listingsBlock = byAgency.size === 1
+  // When everything lands in one group (e.g. an 'agency' run where all picks
+  // share a discipline, or a 'trend' that collapsed to a single role type),
+  // drop the redundant heading and emit a flat bullet list.
+  const listingsBlock = byGroup.size === 1
     ? ranked.map(({ row }) => `- ${row.jobTitle} - ${row.url}`).join('\n')
-    : Array.from(byAgency.entries())
+    : Array.from(byGroup.entries())
         .sort((a, b) => b[1].length - a[1].length)
-        .map(([agency, items]) =>
-          `${agency}\n${items.map(({ row }) => `- ${row.jobTitle} - ${row.url}`).join('\n')}`,
+        .map(([heading, items]) =>
+          `${heading}\n${items.map(({ row }) => `- ${row.jobTitle} - ${row.url}`).join('\n')}`,
         )
         .join('\n\n')
 

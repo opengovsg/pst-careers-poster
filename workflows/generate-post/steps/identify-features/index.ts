@@ -1,39 +1,15 @@
 import { generateText, Output } from 'ai'
 import { z } from 'zod'
 import { model } from '../../../shared'
-import { ROLE_TAGS, type RoleTag } from './role-tags'
+import { ROLE_TAGS, matchesRoleTag, stripHtml } from './role-tags'
 
 const JOB_PORTAL_URL_PREFIX = 'https://jobs.careers.gov.sg/jobs'
 const IT_INDUSTRY = 'InfoComm, Technology, New Media Communications'
-// A listing qualifies for a role tag if its title matches, OR its requirements
-// field contains at least this many keyword hits. A single hit in requirements
-// is almost always incidental ("basic knowledge of cybersecurity" in a
-// non-cyber role); the threshold rejects those while still catching roles
-// where the tag is genuinely a focus area but the title is generic.
-const REQ_HIT_THRESHOLD = 2
 // Trend mode: jobRequirements is the richest per-row signal we have but is
 // dominated by agency boilerplate after the first sentence or two. 200 chars
 // keeps the role-specific lead while bounding total prompt size to ~70K tokens
 // on a ~750-row filtered set.
 const REQ_SNIPPET_CHARS = 200
-
-function stripHtml(text: string | undefined): string {
-  return (text ?? '').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/g, ' ')
-}
-
-function countMatches(text: string, patterns: RegExp[]): number {
-  return patterns.reduce((sum, pattern) => {
-    const global = pattern.flags.includes('g')
-      ? pattern
-      : new RegExp(pattern.source, pattern.flags + 'g')
-    return sum + (text.match(global)?.length ?? 0)
-  }, 0)
-}
-
-function matchesRoleTag(job: Record<string, string>, tag: RoleTag): boolean {
-  if (tag.patterns.some(pattern => pattern.test(job.jobTitle))) return true
-  return countMatches(stripHtml(job.jobRequirements), tag.patterns) >= REQ_HIT_THRESHOLD
-}
 
 class SimpleCloudflareKV {
   private accountId: string
