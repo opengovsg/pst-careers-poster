@@ -18,6 +18,7 @@ First paragraph: the hook. Name something specific about this work. Do not open 
 
 Second paragraph: expand on what kind of work this actually is, or who would thrive here. Be concrete. No call-to-action, no role listing — those are added separately.`
 
+const BOILERPLATE_ROLE_INTRO = 'Look out for these roles:'
 const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hiring'
 
 // Floor check: the listings prompt asks for 6-10 roles. If a sampling produces
@@ -133,7 +134,7 @@ Write the opening hook only. Do not list the roles, do not include URLs, do not 
         .join('\n\n')
 
   const header = title ? `${title}\n\n${introText.trim()}` : introText.trim()
-  const assembled = `${header}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
+  const assembled = `${header}\n\n${BOILERPLATE_ROLE_INTRO}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
 
   // Escape parens: the post is submitted to a Fillout form that forwards to
   // LinkedIn, which treats unescaped parens as link syntax. Titles like
