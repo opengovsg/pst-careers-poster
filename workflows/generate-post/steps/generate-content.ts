@@ -114,14 +114,18 @@ ${ranked.map(({ row }) => `- ${row.jobTitle} — ${row.agency}`).join('\n')}
 Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`,
       })).text
 
-  // Section headings depend on the feature: a 'job title' post is about one
-  // discipline spanning many agencies, so it groups by agency; an 'agency' or
-  // 'trend' post spans many disciplines (within one agency, or across several),
-  // so it groups by discipline. disciplineOf reuses the same role-tag matcher
-  // as feature selection.
-  const groupOf = featureType === 'job title'
-    ? (row: Record<string, string>) => row.agency
-    : (row: Record<string, string>) => disciplineOf(row)
+  // Section headings depend on the feature:
+  // - 'job title': one discipline spanning many agencies — group by agency.
+  // - 'agency': one agency spanning many disciplines — group by discipline
+  //   (disciplineOf reuses the same role-tag matcher as feature selection).
+  // - 'trend': spans many agencies and disciplines. Grouping by discipline
+  //   bunches together near-identical titles that differ only by team name,
+  //   which disorients the reader; grouping by agency gives a navigable
+  //   hierarchy (agency -> title + team). A single-agency trend collapses to a
+  //   flat, heading-less list, which is acceptable.
+  const groupOf = featureType === 'agency'
+    ? (row: Record<string, string>) => disciplineOf(row)
+    : (row: Record<string, string>) => row.agency
 
   // Sections ordered by count desc, ties broken by the model's first-pick order
   // (Map preserves insertion order; Array.sort is stable since ES2019). The
