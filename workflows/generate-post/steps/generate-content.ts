@@ -1,6 +1,6 @@
 import { generateText } from 'ai'
 import { model } from '../../shared'
-import { disciplineOf } from './identify-features/role-tags'
+import { disciplineOf, OTHER_ROLES_HEADING } from './identify-features/role-tags'
 
 // Two-call (rank then write) architecture with an integer row-ID frame.
 // Rationale, alternatives, and consequences: docs/adr/0003-two-call-generate-content.md.
@@ -124,7 +124,9 @@ Write the opening hook only. Do not list the roles, do not include URLs, do not 
     : (row: Record<string, string>) => disciplineOf(row)
 
   // Sections ordered by count desc, ties broken by the model's first-pick order
-  // (Map preserves insertion order; Array.sort is stable since ES2019).
+  // (Map preserves insertion order; Array.sort is stable since ES2019). The
+  // OTHER_ROLES_HEADING catch-all always sorts last regardless of count — it's a
+  // residual bucket, so it reads as a footer rather than a peer discipline.
   const byGroup = new Map<string, typeof ranked>()
   for (const r of ranked) {
     const key = groupOf(r.row)
@@ -137,7 +139,12 @@ Write the opening hook only. Do not list the roles, do not include URLs, do not 
   const listingsBlock = byGroup.size === 1
     ? ranked.map(({ row }) => `- ${row.jobTitle} - ${row.url}`).join('\n')
     : Array.from(byGroup.entries())
-        .sort((a, b) => b[1].length - a[1].length)
+        .sort((a, b) => {
+          const aOther = a[0] === OTHER_ROLES_HEADING
+          const bOther = b[0] === OTHER_ROLES_HEADING
+          if (aOther !== bOther) return aOther ? 1 : -1
+          return b[1].length - a[1].length
+        })
         .map(([heading, items]) =>
           `${heading}\n${items.map(({ row }) => `- ${row.jobTitle} - ${row.url}`).join('\n')}`,
         )
