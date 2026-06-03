@@ -54,7 +54,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
   if (jobs.length === 0) {
     return {
       feature: 'No jobs available',
-      jobs: [],
+      listings: [],
     }
   }
 
@@ -82,7 +82,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
   if (!output.feature) {
     return {
       feature: 'No jobs available',
-      jobs: [],
+      listings: [],
     }
   }
 
@@ -92,9 +92,9 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
 
   return {
     feature: output.feature,
-    jobs: jobs
+    listings: jobs
       .filter(job => 
-        output.jobs.some(
+        output.listings.some(
           ({ jobId, postingNo }) => 
             jobId === job.jobId && 
             postingNo === job.postingNo
@@ -107,7 +107,7 @@ export async function identifyFeatures(jobs: Record<string, string>[], featureTy
 type FeatureOutput = {
   output: {
     feature: string | undefined
-    jobs: { jobId: string, postingNo: string }[]
+    listings: { jobId: string, postingNo: string }[]
   }
 }
 
@@ -134,10 +134,10 @@ async function findFeature(featureType: 'job title' | 'agency' | 'trend', pastEn
 
       const [topAgency] = Object.entries(jobsByAgency).sort((a, b) => b[1].length - a[1].length)
       if (!topAgency) {
-        return { output: { feature: undefined, jobs: [] } }
+        return { output: { feature: undefined, listings: [] } }
       }
       const [feature, agencyJobs] = topAgency
-      return { output: { feature, jobs: agencyJobs } }
+      return { output: { feature, listings: agencyJobs } }
     }
 
     case 'job title': {
@@ -160,7 +160,7 @@ async function findFeature(featureType: 'job title' | 'agency' | 'trend', pastEn
             name: tag.name,
             count: matched.length,
             latestStartDate,
-            jobs: matched.map(job => ({ jobId: job.jobId, postingNo: job.postingNo })),
+            listings: matched.map(job => ({ jobId: job.jobId, postingNo: job.postingNo })),
           }
         })
         .filter(tag => tag.count > 0)
@@ -168,9 +168,9 @@ async function findFeature(featureType: 'job title' | 'agency' | 'trend', pastEn
 
       const top = tagMatches[0]
       if (!top) {
-        return { output: { feature: undefined, jobs: [] } }
+        return { output: { feature: undefined, listings: [] } }
       }
-      return { output: { feature: top.name, jobs: top.jobs } }
+      return { output: { feature: top.name, listings: top.listings } }
     }
 
     case 'trend': {
@@ -220,7 +220,7 @@ ${jobMetadata}
         output: Output.object({
           schema: z.object({
             feature: z.string().describe('The identified trend, as a 1-2 sentence narrative carrying both headline and rationale'),
-            jobs: z.array(z.object({
+            listings: z.array(z.object({
               jobId: z.string().describe('The job ID of the role'),
               postingNo: z.string().describe('The posting number of the role'),
             })).describe('The listings that fit the identified trend (4-12 entries)'),
