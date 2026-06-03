@@ -67,3 +67,12 @@ The listings call uses `maxOutputTokens: 8192` and the intro call uses `4096`. L
 - Title and agency strings always come from source data; the writer cannot drift from the input even if it tries.
 - A missing entry in `ROLE_TAGS` (ADR-0001, ADR-0002) does not affect the writer — only feature selection and tech-role visibility upstream.
 - Operational surface in the runner grows: id validation, dedup, retry, lookup join, grouping. None of these require LLM calls.
+
+## Addendum: row-ID frame extended to trend selection
+
+The `'trend'` branch of `identifyFeatures` (the one LLM-driven feature-selection path) originally returned a nested `{ feature, listings: { jobId, postingNo }[] }` schema, with the CSV exposing `jobId` and `postingNo` columns the model had to reproduce. A Gemma 4 26B reasoning trace showed this reproduced the exact failure modes this ADR set out to remove, in the one place the frame had not been applied:
+
+- **Shape collapse.** The CSV pairs the identifiers as `jobId,postingNo` per row; the model emitted the `listings` array as flat `"jobId,postingNo"` strings rather than objects, treating the comma-joined pair as one atomic token. The nested-object schema did not bind.
+- **Identifier corruption.** Even when it tried, it truncated and transposed the ~36-character `postingNo` UUIDs (and emitted an empty one), spending most of its reasoning budget re-verifying them against the CSV and still getting them wrong.
+
+The fix applies the same integer row-ID frame: the trend CSV now leads with a `1..N` `id` column and drops `jobId`/`postingNo`; the schema returns `{ feature, ids: number[] }`; the runner maps ids back to canonical `{ jobId, postingNo }` with range-validation and dedup. The model never reproduces an opaque identifier. Trend candidates feed the listings ranking call downstream, which re-selects anyway, so the branch only needs to emit a clean candidate set. Floor-check + retry is not duplicated here — the downstream ranker already enforces it.

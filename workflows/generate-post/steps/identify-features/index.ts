@@ -180,15 +180,23 @@ async function findFeature(featureType: 'job title' | 'agency' | 'trend', pastEn
       // explicitly steers away from mode-of-title and mode-of-agency framings
       // (those are the other two cases above) and rejects single-agency
       // rosters that masquerade as sub-stories.
+      //
+      // Selection uses the integer row-ID frame from ADR-0003: each row gets a
+      // 1..N id and the model returns ids, never the opaque postingNo UUIDs.
+      // The runner maps ids back to canonical {jobId, postingNo}. This avoids
+      // the two failure modes a nested {jobId, postingNo}[] schema triggered on
+      // small models — collapsing the CSV's "jobId,postingNo" pair into a flat
+      // string, and truncating/transposing the UUID while reproducing it.
       const csvField = (v: unknown) => {
         const s = String(v ?? '').replace(/\r?\n/g, ' ').replace(/"/g, '""')
         return /[,"]/.test(s) ? `"${s}"` : s
       }
+      const idToRow = new Map<number, Record<string, string>>()
+      itJobs.forEach((job, i) => idToRow.set(i + 1, job))
       const jobMetadata = [
-        'jobId,postingNo,jobTitle,agency,functionalArea,field,jobRequirementsSnippet',
-        ...itJobs.map(job => [
-          job.jobId,
-          job.postingNo,
+        'id,jobTitle,agency,functionalArea,field,jobRequirementsSnippet',
+        ...itJobs.map((job, i) => [
+          i + 1,
           job.jobTitle,
           job.agency,
           job.functionalArea,
@@ -196,13 +204,13 @@ async function findFeature(featureType: 'job title' | 'agency' | 'trend', pastEn
           stripHtml(job.jobRequirements).slice(0, REQ_SNIPPET_CHARS),
         ].map(csvField).join(',')),
       ].join('\n')
-      return await generateText({
+      const { output } = await generateText({
         model,
         system: 'You are a hiring trends analyst for the Singapore Public Service. ' +
           'You identify cross-cutting themes in public-sector IT hiring — patterns that span multiple agencies, ' +
           'capability buildouts that cut across job titles, or structural sub-stories within a single agency. ' +
           'You ground every claim in the data and never invent details.',
-        prompt: `Read the following CSV of currently-open Singapore public-sector IT job listings.
+        prompt: `Read the following CSV of currently-open Singapore public-sector IT job listings. The leading "id" column is the integer you will return.
 
 Identify ONE significant hiring trend. Do NOT report "the most common job title" or "the most active agency" — those are covered by separate deterministic analyses and would be redundant here. Look instead for cross-cutting narratives, for example:
 
@@ -212,7 +220,7 @@ Identify ONE significant hiring trend. Do NOT report "the most common job title"
 
 Strongly prefer trends that span at least 2 distinct agencies. Reach for a single-agency framing only if no cross-agency pattern is defensible, and only if you can name 2+ concrete sub-domains within that agency.
 
-For the "feature" field, output 1-2 sentences that name the trend AND explain why the chosen roles fit together — combine the headline and rationale into a single string. Pick 4-12 listings that actually fit the trend; use the exact jobId and postingNo from the CSV.
+For the "feature" field, output 1-2 sentences that name the trend AND explain why the chosen roles fit together — combine the headline and rationale into a single string. For the "ids" field, pick 4-12 listings that actually fit the trend and return the integer from their "id" column — nothing else.
 
 CSV:
 ${jobMetadata}
@@ -220,13 +228,22 @@ ${jobMetadata}
         output: Output.object({
           schema: z.object({
             feature: z.string().describe('The identified trend, as a 1-2 sentence narrative carrying both headline and rationale'),
-            listings: z.array(z.object({
-              jobId: z.string().describe('The job ID of the role'),
-              postingNo: z.string().describe('The posting number of the role'),
-            })).describe('The listings that fit the identified trend (4-12 entries)'),
+            ids: z.array(z.number()).describe('The integer ids (from the "id" column) of the listings that fit the identified trend (4-12 entries)'),
           }),
         }),
       })
+
+      // Map ids back to canonical {jobId, postingNo}, dropping out-of-range ids
+      // and deduping repeats — the same backstops the ranking call applies.
+      const seen = new Set<number>()
+      const listings: { jobId: string, postingNo: string }[] = []
+      for (const id of output.ids ?? []) {
+        const row = idToRow.get(id)
+        if (!row || seen.has(id)) continue
+        seen.add(id)
+        listings.push({ jobId: row.jobId, postingNo: row.postingNo })
+      }
+      return { output: { feature: output.feature, listings } }
     }
   }
 }
