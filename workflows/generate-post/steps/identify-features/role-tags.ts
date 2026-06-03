@@ -95,7 +95,18 @@ export function matchesRoleTag(job: Record<string, string>, tag: RoleTag): boole
  * The discipline heading a listing is grouped under in the content post. Uses
  * first-match against ROLE_TAGS (order is load-bearing — see ROLE_TAGS doc),
  * falling back to OTHER_ROLES_HEADING.
+ *
+ * Title matches take priority over requirements-keyword matches: a tag whose
+ * jobTitle pattern matches wins over an earlier-listed tag matched only via the
+ * requirements path. Without this, a role titled "Head, MLOps" whose JD mentions
+ * "data science" twice would be grouped under Data Science (listed earlier) even
+ * though its title plainly names MLOps. The requirements path still matters for
+ * feature selection and tech-role visibility (via matchesRoleTag) — this
+ * priority is display-only and does not change matchesRoleTag.
  */
 export function disciplineOf(job: Record<string, string>): string {
-  return ROLE_TAGS.find(tag => matchesRoleTag(job, tag))?.name ?? OTHER_ROLES_HEADING
+  return (
+    ROLE_TAGS.find(tag => tag.patterns.some(pattern => pattern.test(job.jobTitle))) ??
+    ROLE_TAGS.find(tag => matchesRoleTag(job, tag))
+  )?.name ?? OTHER_ROLES_HEADING
 }
