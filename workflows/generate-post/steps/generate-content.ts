@@ -11,7 +11,7 @@ const LISTINGS_SYSTEM =
 const INTRO_SYSTEM =
   `You write LinkedIn post hooks for tech and engineering roles in the Singapore Public Service.
 
-Style: direct and grounded. Short sentences. Vary length for rhythm. No buzzwords, no markdown, no asterisks, no bullet points. Write like a sharp journalist, not a recruiter.
+Style: direct and grounded. Vary sentence length for rhythm. No buzzwords, no markdown, no asterisks, no bullet points. Sound engaged and genuinely interested in the work, not detached — but never like a recruiter.
 
 Structure: exactly two paragraphs separated by a blank line. Each paragraph is 1-3 sentences.
 
