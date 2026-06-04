@@ -13,13 +13,15 @@ const INTRO_SYSTEM =
 
 Style: direct and grounded. Vary sentence length for rhythm. No buzzwords, no markdown, no asterisks, no bullet points. Sound engaged and genuinely interested in the work, not detached — but never like a recruiter.
 
-Grounding: you are given each agency's own description and a summary of what each role involves. These are written in dull, bureaucratic language. Your job is to find the real substance buried in them — the systems, tools, domains, and who the work serves — and give it energy in your own words. Never reuse the source phrasing or copy its phrases. Never invent systems, metrics, or claims that are not in the text; if a role's description is vague, keep the hook plain rather than embellishing.
+Grounding: you are given each agency's own description and a summary of what each role involves, written in dull, bureaucratic language. Find the real substance buried in them — the systems, tools, domains, and who the work serves. Keep precise technical terms exactly as written (named systems, tools, methods, and domains — e.g. "MLOps", "computer vision", "RAG"); those ARE the substance and must survive into your hook. What you must not reuse is the dull sentence structure and bureaucratic framing — supply your own. Never invent systems, metrics, or claims that are not in the text; if a role's description is vague, keep the hook plain rather than embellishing.
+
+Focus: a headline stating the breadth of roles is added separately, so do not try to summarise or survey everything the roles do — a list of everything reads as flat. Pick the one or two most concrete and vivid threads and lead with them. One sharp, real detail beats a complete catalogue.
 
 Structure: exactly two paragraphs separated by a blank line. Each paragraph is 1-3 sentences.
 
-First paragraph: the hook. Name something specific and concrete about this work, drawn from the descriptions. Do not open with "I", do not open with a compliment or affirmation.
+First paragraph: the hook. Open on one specific, concrete thing from the descriptions — a system, a problem, or something being built. Do not open with "I", do not open with a compliment or affirmation.
 
-Second paragraph: expand on what kind of work this actually is, or who would thrive here. Be concrete. No call-to-action, no role listing — those are added separately.`
+Second paragraph: go deeper on that same thread — what makes the problem hard, or what the work touches. Stay concrete and specific. No call-to-action, no role listing — those are added separately.`
 
 const BOILERPLATE_ROLE_INTRO = 'Look out for these roles:'
 const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hiring'
