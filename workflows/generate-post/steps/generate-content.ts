@@ -1,6 +1,6 @@
 import { generateText } from 'ai'
 import { model } from '../../shared'
-import { disciplineOf, OTHER_ROLES_HEADING } from './identify-features/role-tags'
+import { disciplineOf, OTHER_ROLES_HEADING, stripHtml } from './identify-features/role-tags'
 
 // Two-call (rank then write) architecture with an integer row-ID frame.
 // Rationale, alternatives, and consequences: docs/adr/0003-two-call-generate-content.md.
@@ -13,9 +13,11 @@ const INTRO_SYSTEM =
 
 Style: direct and grounded. Vary sentence length for rhythm. No buzzwords, no markdown, no asterisks, no bullet points. Sound engaged and genuinely interested in the work, not detached — but never like a recruiter.
 
+Grounding: you are given each agency's own description and a summary of what each role involves. These are written in dull, bureaucratic language. Your job is to find the real substance buried in them — the systems, tools, domains, and who the work serves — and give it energy in your own words. Never reuse the source phrasing or copy its phrases. Never invent systems, metrics, or claims that are not in the text; if a role's description is vague, keep the hook plain rather than embellishing.
+
 Structure: exactly two paragraphs separated by a blank line. Each paragraph is 1-3 sentences.
 
-First paragraph: the hook. Name something specific about this work. Do not open with "I", do not open with a compliment or affirmation.
+First paragraph: the hook. Name something specific and concrete about this work, drawn from the descriptions. Do not open with "I", do not open with a compliment or affirmation.
 
 Second paragraph: expand on what kind of work this actually is, or who would thrive here. Be concrete. No call-to-action, no role listing — those are added separately.`
 
@@ -28,6 +30,15 @@ const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hi
 // attempt yields zero.
 const RANKING_FLOOR = 6
 const RANKING_MAX_ATTEMPTS = 2
+
+// Intro-call substrate. jobResponsibilities is the most fact-dense field (named
+// systems, tools, domains); its concrete lead sits in the first few hundred
+// chars. agencyDescription is the agency's own self-description — the safe,
+// sourced substitute for the model's parametric knowledge, which matters most
+// for low-profile intel/security agencies it shouldn't guess about. Both are
+// truncated to keep the enriched prompt bounded across 6-10 roles.
+const RESP_SNIPPET_CHARS = 500
+const AGENCY_DESC_CHARS = 400
 
 export async function generateContent(feature: string, jobs: Record<string, string>[], featureType: 'job title' | 'agency' | 'trend'): Promise<string> {
   'use step'
@@ -99,20 +110,55 @@ Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Out
     throw new Error(`generateContent: no valid listing IDs parsed across ${RANKING_MAX_ATTEMPTS} attempts (last raw text: ${lastRawText.slice(0, 200)})`)
   }
 
-  const introText = featureType === 'trend'
-    ? feature
-    : (await generateText({
-        model,
-        maxOutputTokens: 8192,
-        temperature: 0.7,
-        system: INTRO_SYSTEM,
-        prompt: `Feature: ${feature}
+  // Trend reuses the feature string as its intro; agency/job-title call the
+  // intro model with enriched substrate — the agencies' own descriptions plus a
+  // per-role summary of what the work involves — so the hook can be grounded in
+  // real specifics rather than invented (see RESP_SNIPPET_CHARS / AGENCY_DESC_CHARS).
+  let introText: string
+  if (featureType === 'trend') {
+    introText = feature
+  } else {
+    const snippet = (text: string | undefined, max: number) =>
+      stripHtml(text).replace(/\s+/g, ' ').trim().slice(0, max)
 
-Roles featured in this post (title — agency):
-${ranked.map(({ row }) => `- ${row.jobTitle} — ${row.agency}`).join('\n')}
+    // Dedup agency descriptions: a job-title post can pull several roles from
+    // the same agency, and repeating its blurb wastes budget and skews the model.
+    const agencyDescriptions = new Map<string, string>()
+    for (const { row } of ranked) {
+      if (agencyDescriptions.has(row.agency)) continue
+      const desc = snippet(row.agencyDescription, AGENCY_DESC_CHARS)
+      if (desc) agencyDescriptions.set(row.agency, desc)
+    }
+    const agencyBlock = agencyDescriptions.size === 0
+      ? ''
+      : `About the hiring agencies (their own descriptions — context only, do not quote):\n${
+          Array.from(agencyDescriptions.entries())
+            .map(([agency, desc]) => `- ${agency}: ${desc}`)
+            .join('\n')
+        }\n\n`
+
+    const rolesBlock = ranked
+      .map(({ row }) => {
+        const resp = snippet(row.jobResponsibilities, RESP_SNIPPET_CHARS)
+        return resp
+          ? `- ${row.jobTitle} — ${row.agency}\n  What the role involves: ${resp}`
+          : `- ${row.jobTitle} — ${row.agency}`
+      })
+      .join('\n')
+
+    introText = (await generateText({
+      model,
+      maxOutputTokens: 8192,
+      temperature: 0.7,
+      system: INTRO_SYSTEM,
+      prompt: `Feature: ${feature}
+
+${agencyBlock}Roles featured in this post:
+${rolesBlock}
 
 Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`,
-      })).text
+    })).text
+  }
 
   // Section headings depend on the feature:
   // - 'job title': one discipline spanning many agencies — group by agency.
