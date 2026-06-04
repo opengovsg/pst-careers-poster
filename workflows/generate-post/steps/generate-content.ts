@@ -11,7 +11,7 @@ const LISTINGS_SYSTEM =
 const INTRO_SYSTEM =
   `You write LinkedIn post hooks for tech and engineering roles in the Singapore Public Service.
 
-Style: direct and grounded. Vary sentence length for rhythm. No buzzwords, no markdown, no asterisks, no bullet points. Sound engaged and genuinely interested in the work, not detached — but never like a recruiter.
+Voice: write like a curious engineer telling a peer about something genuinely interesting they just ran into. A little warmth and energy is good and wanted — it should sound like a person who finds this work cool, not a press release. The warmth comes from the substance being genuinely interesting, never from adjectives. What is banned is sales talk: hype words (exciting, cutting-edge, world-class, dynamic, passionate, transformative), "join us", "make an impact", and anything that reads like a job ad. No markdown, no asterisks, no bullet points. Vary sentence length for rhythm.
 
 Grounding: you are given each agency's own description and a summary of what each role involves, written in dull, bureaucratic language. Find the real substance buried in them — the systems, tools, domains, and who the work serves. Keep precise technical terms exactly as written (named systems, tools, methods, and domains — e.g. "MLOps", "computer vision", "RAG"); those ARE the substance and must survive into your hook. What you must not reuse is the dull sentence structure and bureaucratic framing — supply your own. Never invent systems, metrics, or claims that are not in the text; if a role's description is vague, keep the hook plain rather than embellishing.
 
@@ -19,9 +19,9 @@ Focus: a headline stating the breadth of roles is added separately, so do not tr
 
 Structure: exactly two paragraphs separated by a blank line. Each paragraph is 1-3 sentences.
 
-First paragraph: the hook. Open on one specific, concrete thing from the descriptions — a system, a problem, or something being built. Do not open with "I", do not open with a compliment or affirmation.
+First paragraph: the hook. Your first sentence must state the problem, the tension, or what is at stake as a complete thought — and it must not name any tool, system, or technical term. Save every specific (named systems, tools, methods, domains) for the second sentence onward. This forces a real hook instead of a documentation-style "we build X" opening. Do not open with "I", and do not open with a compliment or affirmation.
 
-Second paragraph: go deeper on that same thread — what makes the problem hard, or what the work touches. Stay concrete and specific. No call-to-action, no role listing — those are added separately.`
+Second paragraph: go deeper on that same thread — what makes the problem hard, or what the work touches and who it serves. Stay concrete and specific. No call-to-action, no role listing — those are added separately.`
 
 const BOILERPLATE_ROLE_INTRO = 'Look out for these roles:'
 const BOILERPLATE_CLOSING = 'Visit go.gov.sg/pst-roles for other tech roles! #hiring'
@@ -41,6 +41,17 @@ const RANKING_MAX_ATTEMPTS = 2
 // truncated to keep the enriched prompt bounded across 6-10 roles.
 const RESP_SNIPPET_CHARS = 500
 const AGENCY_DESC_CHARS = 400
+
+// The intro call is a multi-constraint stylistic task, and gemma-4-26b sometimes
+// enters an unbounded self-critique loop on it — drafting a usable hook, then
+// re-checking it against every rule until the completion budget runs out
+// (finish_reason 'length', empty output). Temperature 1.0 flattens the token
+// distribution enough that the model reliably samples the "this is done, emit"
+// path instead of looping (3/3 vs 2/3 at 0.7 in eval); INTRO_MAX_ATTEMPTS is the
+// belt-and-suspenders re-roll for the residual cases. Each re-roll is a fresh
+// sample, so a path that looped once almost always converges on the next.
+const INTRO_TEMPERATURE = 1.0
+const INTRO_MAX_ATTEMPTS = 3
 
 export async function generateContent(feature: string, jobs: Record<string, string>[], featureType: 'job title' | 'agency' | 'trend'): Promise<string> {
   'use step'
@@ -148,18 +159,31 @@ Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Out
       })
       .join('\n')
 
-    introText = (await generateText({
-      model,
-      maxOutputTokens: 8192,
-      temperature: 0.7,
-      system: INTRO_SYSTEM,
-      prompt: `Feature: ${feature}
+    const introPrompt = `Feature: ${feature}
 
 ${agencyBlock}Roles featured in this post:
 ${rolesBlock}
 
-Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`,
-    })).text
+Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`
+
+    // Re-roll on empty output: a truncated self-critique loop returns empty text
+    // with finish_reason 'length'. A fresh sample almost always converges. If
+    // every attempt comes back empty, introText stays '' and the header below
+    // falls back to the title alone — degraded but never a broken post.
+    introText = ''
+    for (let attempt = 1; attempt <= INTRO_MAX_ATTEMPTS; attempt++) {
+      const introRes = await generateText({
+        model,
+        maxOutputTokens: 8192,
+        temperature: INTRO_TEMPERATURE,
+        system: INTRO_SYSTEM,
+        prompt: introPrompt,
+      })
+      if (introRes.text.trim()) {
+        introText = introRes.text.trim()
+        break
+      }
+    }
   }
 
   // Section headings depend on the feature:
@@ -202,7 +226,9 @@ Write the opening hook only. Do not list the roles, do not include URLs, do not 
         )
         .join('\n\n')
 
-  const header = title ? `${title}\n\n${introText.trim()}` : introText.trim()
+  const header = title
+    ? (introText.trim() ? `${title}\n\n${introText.trim()}` : title)
+    : introText.trim()
   const assembled = `${header}\n\n${BOILERPLATE_ROLE_INTRO}\n\n${listingsBlock}\n\n${BOILERPLATE_CLOSING}`
 
   // Escape parens: the post is submitted to a Fillout form that forwards to
