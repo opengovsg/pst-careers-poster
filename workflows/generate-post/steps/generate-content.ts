@@ -15,11 +15,13 @@ Voice: write like a curious engineer telling a peer about something genuinely in
 
 Grounding: you are given each agency's own description and a summary of what each role involves, written in dull, bureaucratic language. Find the real substance buried in them — the systems, tools, domains, and who the work serves. Keep precise technical terms exactly as written (named systems, tools, methods, and domains — e.g. "MLOps", "computer vision", "RAG"); those ARE the substance and must survive into your hook. What you must not reuse is the dull sentence structure and bureaucratic framing — supply your own. Never invent systems, metrics, or claims that are not in the text; if a role's description is vague, keep the hook plain rather than embellishing.
 
+Anchor: this is the Singapore public service, and the hook must make that unmistakable. Each agency's own description tells you its public mission and who it exists to serve — drawn only from the descriptions you are given, make clear what public purpose this work is for. Ground the stakes in that mission, re-voiced in your own words and never quoted; never invent a public purpose the descriptions do not state. For a single agency that is its mission; across several it is the public outcomes they share.
+
 Focus: a headline stating the breadth of roles is added separately, so do not try to summarise or survey everything the roles do — a list of everything reads as flat. Pick the one or two most concrete and vivid threads and lead with them. One sharp, real detail beats a complete catalogue.
 
 Structure: exactly two paragraphs separated by a blank line. Each paragraph is 1-3 sentences.
 
-First paragraph: the hook. Your first sentence must state the problem, the tension, or what is at stake as a complete thought — and it must not name any tool, system, or technical term. Save every specific (named systems, tools, methods, domains) for the second sentence onward. This forces a real hook instead of a documentation-style "we build X" opening. Do not open with "I", and do not open with a compliment or affirmation.
+First paragraph: the hook. Your first sentence must set up the hook as a complete thought — the stakes, who the work is for, the situation, or the problem — and it must not name any tool, system, or technical term. Vary how you open: do not reflexively reach for an "X is easy but Y is hard" or "X is one thing, Y is another" contrast; that framing is becoming a tic. Save every specific (named systems, tools, methods, domains) for the second sentence onward. Do not open with "I", and do not open with a compliment or affirmation.
 
 Second paragraph: go deeper on that same thread — what makes the problem hard, or what the work touches and who it serves. Stay concrete and specific. No call-to-action, no role listing — those are added separately.`
 
@@ -56,12 +58,12 @@ const INTRO_MAX_ATTEMPTS = 3
 export async function generateContent(feature: string, jobs: Record<string, string>[], featureType: 'job title' | 'agency' | 'trend'): Promise<string> {
   'use step'
 
-  // Trend mode: the feature string is already a 1-2 sentence narrative
-  // produced by identifyFeatures (combining headline + rationale). It serves
-  // directly as the post's intro, so we skip both the title template and the
-  // INTRO_SYSTEM call. Listings ranking still runs — the trend identification
-  // returned 4-12 candidates and the ranker enforces dedup, agency diversity,
-  // and seniority spread regardless of feature source.
+  // All three feature types run through the intro writer. Trend has no title
+  // template — its `feature` is a 1-2 sentence narrative that we feed as the
+  // writer's steering line rather than publishing raw (the raw analyst string
+  // came out abstract and place-less: "cross-agency maturation of AI
+  // capabilities…" with no sign it was the Singapore public service). The
+  // writer re-grounds it in the agencies' missions + the roles' responsibilities.
   const title = featureType === 'agency'
     ? `${feature} is hiring across its tech teams.`
     : featureType === 'job title'
@@ -123,68 +125,67 @@ Select and order the 6-10 best roles for a LinkedIn post about "${feature}". Out
     throw new Error(`generateContent: no valid listing IDs parsed across ${RANKING_MAX_ATTEMPTS} attempts (last raw text: ${lastRawText.slice(0, 200)})`)
   }
 
-  // Trend reuses the feature string as its intro; agency/job-title call the
-  // intro model with enriched substrate — the agencies' own descriptions plus a
-  // per-role summary of what the work involves — so the hook can be grounded in
-  // real specifics rather than invented (see RESP_SNIPPET_CHARS / AGENCY_DESC_CHARS).
-  let introText: string
-  if (featureType === 'trend') {
-    introText = feature
-  } else {
-    const snippet = (text: string | undefined, max: number) =>
-      stripHtml(text).replace(/\s+/g, ' ').trim().slice(0, max)
+  // All three feature types call the intro writer with enriched substrate — the
+  // agencies' own descriptions (their mission anchor; what makes the hook
+  // unmistakably Singapore public service) plus a per-role summary of what the
+  // work involves — so the hook is grounded in real specifics rather than
+  // invented (see RESP_SNIPPET_CHARS / AGENCY_DESC_CHARS). `feature` is the
+  // steering line: a short label for agency/job-title, the trend narrative for trend.
+  const snippet = (text: string | undefined, max: number) =>
+    stripHtml(text).replace(/\s+/g, ' ').trim().slice(0, max)
 
-    // Dedup agency descriptions: a job-title post can pull several roles from
-    // the same agency, and repeating its blurb wastes budget and skews the model.
-    const agencyDescriptions = new Map<string, string>()
-    for (const { row } of ranked) {
-      if (agencyDescriptions.has(row.agency)) continue
-      const desc = snippet(row.agencyDescription, AGENCY_DESC_CHARS)
-      if (desc) agencyDescriptions.set(row.agency, desc)
-    }
-    const agencyBlock = agencyDescriptions.size === 0
-      ? ''
-      : `About the hiring agencies (their own descriptions — context only, do not quote):\n${
-          Array.from(agencyDescriptions.entries())
-            .map(([agency, desc]) => `- ${agency}: ${desc}`)
-            .join('\n')
-        }\n\n`
+  // Dedup agency descriptions: a post can pull several roles from the same
+  // agency, and repeating its blurb wastes budget and skews the model.
+  const agencyDescriptions = new Map<string, string>()
+  for (const { row } of ranked) {
+    if (agencyDescriptions.has(row.agency)) continue
+    const desc = snippet(row.agencyDescription, AGENCY_DESC_CHARS)
+    if (desc) agencyDescriptions.set(row.agency, desc)
+  }
+  const agencyBlock = agencyDescriptions.size === 0
+    ? ''
+    : `About the hiring agencies (their own descriptions — use these to anchor the work in each agency's mission and who it serves; re-voice, do not quote):\n${
+        Array.from(agencyDescriptions.entries())
+          .map(([agency, desc]) => `- ${agency}: ${desc}`)
+          .join('\n')
+      }\n\n`
 
-    const rolesBlock = ranked
-      .map(({ row }) => {
-        const resp = snippet(row.jobResponsibilities, RESP_SNIPPET_CHARS)
-        return resp
-          ? `- ${row.jobTitle} — ${row.agency}\n  What the role involves: ${resp}`
-          : `- ${row.jobTitle} — ${row.agency}`
-      })
-      .join('\n')
+  const rolesBlock = ranked
+    .map(({ row }) => {
+      const resp = snippet(row.jobResponsibilities, RESP_SNIPPET_CHARS)
+      return resp
+        ? `- ${row.jobTitle} — ${row.agency}\n  What the role involves: ${resp}`
+        : `- ${row.jobTitle} — ${row.agency}`
+    })
+    .join('\n')
 
-    const introPrompt = `Feature: ${feature}
+  const introPrompt = `Feature: ${feature}
 
 ${agencyBlock}Roles featured in this post:
 ${rolesBlock}
 
 Write the opening hook only. Do not list the roles, do not include URLs, do not include a closing call-to-action. Plain prose.`
 
-    // Re-roll on empty output: a truncated self-critique loop returns empty text
-    // with finish_reason 'length'. A fresh sample almost always converges. If
-    // every attempt comes back empty, introText stays '' and the header below
-    // falls back to the title alone — degraded but never a broken post.
-    introText = ''
-    for (let attempt = 1; attempt <= INTRO_MAX_ATTEMPTS; attempt++) {
-      const introRes = await generateText({
-        model,
-        maxOutputTokens: 8192,
-        temperature: INTRO_TEMPERATURE,
-        system: INTRO_SYSTEM,
-        prompt: introPrompt,
-      })
-      if (introRes.text.trim()) {
-        introText = introRes.text.trim()
-        break
-      }
+  // Re-roll on empty output: a truncated self-critique loop returns empty text
+  // with finish_reason 'length'. A fresh sample almost always converges.
+  let introText = ''
+  for (let attempt = 1; attempt <= INTRO_MAX_ATTEMPTS; attempt++) {
+    const introRes = await generateText({
+      model,
+      maxOutputTokens: 8192,
+      temperature: INTRO_TEMPERATURE,
+      system: INTRO_SYSTEM,
+      prompt: introPrompt,
+    })
+    if (introRes.text.trim()) {
+      introText = introRes.text.trim()
+      break
     }
   }
+  // Fallback when every attempt comes back empty: agency/job-title fall back to
+  // the title alone (handled in the header below). Trend has no title, so fall
+  // back to its raw narrative feature string rather than emit an empty header.
+  if (!introText && featureType === 'trend') introText = feature
 
   // Section headings depend on the feature:
   // - 'job title': one discipline spanning many agencies — group by agency.
