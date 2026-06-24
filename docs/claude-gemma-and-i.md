@@ -59,7 +59,7 @@ Source data is an OGP-controlled feed of live listings — trusted infrastructur
 
 ---
 
-## The catch: Sonnet was overkill
+## Sonnet was overkill
 
 - We were paying frontier-model prices to write ~3 short LinkedIn posts a week.
 - The task isn't *that* hard — pick some rows, write two paragraphs.
@@ -70,7 +70,7 @@ Source data is an OGP-controlled feed of live listings — trusted infrastructur
 
 ---
 
-## Then we swapped the model in, and it broke
+## We swapped the model in, and it broke
 
 The same prompt that sang on Sonnet produced, on Gemma:
 
@@ -84,7 +84,7 @@ The lesson that framed everything after:
 
 ---
 
-## The fix people skip: take work *away* from the model
+## Take work *away* from the model
 
 An LLM is the wrong tool for anything deterministic. It's slow, it burns tokens, and — worst — it can get it *wrong*. Picking by a rule, counting, grouping, formatting, de-duplicating, escaping a bracket: **code does every one of these perfectly, every time, for free.**
 
@@ -108,11 +108,14 @@ The right column is short on purpose. Everything that *can* be code, is.
 
 ## The trick that ties it together: integer row-IDs
 
-The model never writes a URL, and never retypes a title it could mangle.
-It picks **row numbers** off a list — "give me 6 to 10 integers" — and code joins the real title, agency, and link back.
+Once code has chosen the agency or role family to feature, there's still a shortlist of candidate jobs. The model's job: **pick the 6–10 most interesting to spotlight.**
+
+The naïve way is to hand it the listings and ask it to write each one out — title, agency, link. But a small model *will* eventually fumble a title or mangle an 80-character URL.
+
+So we don't let it touch them. We number the shortlist and ask only for **row numbers** — "give me 6 to 10 integers" — and code joins the real title, agency, and link back.
 
 - Keeps the model **focused**: pick numbers, nothing else.
-- Makes the output **safe**: it can't corrupt a link it never touches.
+- Makes the output **safe**: it can't corrupt a link it never touches — and a number that's out of range is trivially caught and dropped, where a wrong URL is not.
 
 > Don't ask a small model to be careful. Arrange things so it *can't be careless.*
 > Then reserve it for the only two things that genuinely need judgment: **what's interesting**, and **how to say it**.
@@ -121,7 +124,7 @@ It picks **row numbers** off a list — "give me 6 to 10 integers" — and code 
 
 ## Prompt tuning, Act I — the "Warm Dead Bird"
 
-- Gemma's copy was accurate and lifeless. (As the saying goes: if Commodore bought KFC, they'd rename it *Warm Dead Bird*.)
+- Gemma's copy was accurate and lifeless. (As the saying goes: if Commodore bought KFC, they'd call it *Warm Dead Bird*.)
 - The fix wasn't fancier words — it was **substance**. We fed the writer each role's real responsibilities and each agency's own description.
 - Flatness was a property of the source's *voice*, not its *facts*. The facts (named systems, real domains) were there to be mined.
 
@@ -142,7 +145,7 @@ The original prompt was a long list of *don'ts* (no buzzwords, no markdown, neve
 ## Prompt tuning, Act III — temperature & traces
 
 - "Never like a recruiter" → a literal model suppressed *all* energy. We split warmth from sales talk explicitly.
-- The self-critique loop was structural. **Raising temperature to 1.0** flattened the distribution enough for the model to commit and stop — the variety dial doubled as the escape hatch.
+- The self-critique loop was structural. At low temperature the model keeps reaching for the single "best" next word — and never decides it's found it. **Raising temperature to 1.0** loosens that grip enough for it to just commit and stop. The variety dial doubled as the escape hatch.
 - Every fix was paid for by **reading the model's reasoning traces**, not guessing. The loop and the flatness look identical from the output alone.
 
 ---
